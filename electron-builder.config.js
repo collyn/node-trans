@@ -4,6 +4,7 @@
 export default {
   appId: "com.nodetrans.app",
   productName: "Node Trans",
+  npmRebuild: true,
   directories: {
     output: "release",
     buildResources: "build",
