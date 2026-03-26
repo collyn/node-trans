@@ -8,7 +8,7 @@
     "start": "node src/server.js",
     "dev:server": "node --watch src/server.js",
     "dev:client": "vite --config client/vite.config.js",
-    "dev": "npm run dev:server & npm run dev:client",
+    "dev": "npx concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "build": "vite build --config client/vite.config.js"
   },
   "keywords": [],
@@ -16,17 +16,18 @@
   "license": "ISC",
   "dependencies": {
     "@soniox/node": "^1.1.2",
-    "better-sqlite3": "^12.8.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3"
+    "socket.io-client": "^4.8.3",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^9.2.1",
     "tailwindcss": "^4.2.2",
     "vite": "^8.0.2"
   }
