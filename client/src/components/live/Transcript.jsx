@@ -4,17 +4,18 @@ import { useI18n } from "../../i18n/I18nContext";
 import { getSpeakerIndex } from "../../utils/speakerColors";
 import Utterance from "./Utterance";
 
-export default function Transcript({ utterances, speakerColorMap, speakerAliases, partialResult }) {
+export default function Transcript({ utterances, speakerColorMap, speakerAliases, partialResults }) {
   const { state } = useSocket();
   const { t } = useI18n();
   const ref = useRef(null);
-  const hasContent = utterances.length > 0 || partialResult?.originalText;
+  const partialEntries = Object.entries(partialResults);
+  const hasContent = utterances.length > 0 || partialEntries.some(([, p]) => p.originalText);
 
   useEffect(() => {
     if (ref.current) {
       ref.current.scrollTop = ref.current.scrollHeight;
     }
-  }, [utterances.length, partialResult]);
+  }, [utterances.length, partialResults]);
 
   return (
     <div
@@ -35,8 +36,10 @@ export default function Transcript({ utterances, speakerColorMap, speakerAliases
               speakerName={u.speaker && speakerAliases?.[u.speaker] ? speakerAliases[u.speaker] : undefined}
             />
           ))}
-          {partialResult?.originalText && (
-            <PartialUtterance data={partialResult} speakerColorMap={speakerColorMap} />
+          {partialEntries.map(([source, data]) =>
+            data.originalText ? (
+              <PartialUtterance key={source} data={data} speakerColorMap={speakerColorMap} />
+            ) : null
           )}
         </>
       )}

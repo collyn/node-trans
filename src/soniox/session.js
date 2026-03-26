@@ -93,21 +93,50 @@ export function createSession({ targetLanguage = "vi", languageHints = ["en"], a
     },
 
     onPartial(callback) {
+      let finalOriginal = "";
+      let finalTranslated = "";
+      let speaker = null;
+
       session.on("result", (result) => {
         buffer.addResult(result);
 
-        // Extract partial text from current buffer state
         const tokens = result.tokens || [];
-        if (tokens.length > 0) {
-          const origTokens = tokens.filter((t) => t.translation_status !== "translation");
-          const transTokens = tokens.filter((t) => t.translation_status === "translation");
-          const speaker = origTokens.find((t) => t.speaker)?.speaker || transTokens.find((t) => t.speaker)?.speaker || null;
-          callback({
-            originalText: origTokens.map((t) => t.text).join(""),
-            translatedText: transTokens.map((t) => t.text).join(""),
-            speaker,
-          });
-        }
+        if (tokens.length === 0) return;
+
+        // Final tokens are incremental — accumulate them
+        const finalTokens = tokens.filter((t) => t.is_final);
+        const nonFinalTokens = tokens.filter((t) => !t.is_final);
+
+        const finalOrig = finalTokens.filter((t) => t.translation_status !== "translation");
+        const finalTrans = finalTokens.filter((t) => t.translation_status === "translation");
+
+        finalOriginal += finalOrig.map((t) => t.text).join("");
+        finalTranslated += finalTrans.map((t) => t.text).join("");
+
+        // Non-final tokens may be re-sent/updated — use only the current result's
+        const nonFinalOrig = nonFinalTokens.filter((t) => t.translation_status !== "translation");
+        const nonFinalTrans = nonFinalTokens.filter((t) => t.translation_status === "translation");
+
+        const s = tokens.find((t) => t.speaker)?.speaker;
+        if (s) speaker = s;
+
+        callback({
+          originalText: finalOriginal + nonFinalOrig.map((t) => t.text).join(""),
+          translatedText: finalTranslated + nonFinalTrans.map((t) => t.text).join(""),
+          speaker,
+        });
+      });
+
+      // Reset when utterance is finalized
+      session.on("endpoint", () => {
+        finalOriginal = "";
+        finalTranslated = "";
+        speaker = null;
+      });
+      session.on("finished", () => {
+        finalOriginal = "";
+        finalTranslated = "";
+        speaker = null;
       });
     },
 

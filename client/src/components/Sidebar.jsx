@@ -18,13 +18,20 @@ function SidebarItem({ session, isActive, isSelected, disabled, selectMode, chec
   const startDate = new Date(session.started_at + "Z");
   const date = startDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const time = startDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  const hasCustomTitle = !!session.title;
   const title = session.title || `${date} ${time}`;
   const source = SOURCE_LABELS[session.audio_source] || session.audio_source;
   const duration = formatDuration(session.started_at, session.ended_at);
 
+  const meta = [];
+  if (hasCustomTitle) meta.push(`${date} ${time}`);
+  if (duration) meta.push(duration);
+  meta.push(source);
+  if (session.utterance_count > 0) meta.push(`${session.utterance_count} ${t("msgs")}`);
+
   return (
     <div
-      className={`px-3 py-2.5 rounded-xl transition-all duration-200 mb-1 border flex items-center gap-2 ${
+      className={`px-3 py-2 rounded-xl transition-all duration-200 mb-0.5 border flex items-center gap-2 ${
         disabled
           ? "opacity-40 cursor-not-allowed"
           : "cursor-pointer"
@@ -45,19 +52,21 @@ function SidebarItem({ session, isActive, isSelected, disabled, selectMode, chec
         />
       )}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5">
+        <div className="flex items-center gap-2">
           {isActive && (
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
           )}
-          <span className="font-medium text-sm text-gray-900 dark:text-gray-200 truncate flex-1">
+          <span className="font-medium text-sm text-gray-800 dark:text-gray-100 truncate flex-1">
             {title}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 text-[0.68rem] text-gray-400 dark:text-gray-600 pl-0">
-          <span>{date} {time}</span>
-          {duration && <span>· {duration}</span>}
-          <span>· {source}</span>
-          {session.utterance_count > 0 && <span>· {session.utterance_count} {t("msgs")}</span>}
+        <div className="flex items-center gap-1 mt-0.5 text-[0.7rem] text-gray-500 dark:text-gray-400">
+          {meta.map((item, i) => (
+            <span key={i} className="flex items-center gap-1">
+              {i > 0 && <span className="text-gray-300 dark:text-gray-600">·</span>}
+              {item}
+            </span>
+          ))}
         </div>
       </div>
     </div>

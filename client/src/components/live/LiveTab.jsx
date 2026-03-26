@@ -73,7 +73,7 @@ export default function LiveTab() {
           />
         </div>
       )}
-      <Transcript utterances={utterances} speakerColorMap={speakerColorMap} speakerAliases={selectedSessionData?.speakerAliases} partialResult={state.partialResult} />
+      <Transcript utterances={utterances} speakerColorMap={speakerColorMap} speakerAliases={selectedSessionData?.speakerAliases} partialResults={state.partialResults} />
 
       <PromptDialog
         open={!!speakerModal}

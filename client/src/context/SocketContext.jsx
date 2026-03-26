@@ -15,7 +15,7 @@ const initialState = {
   statusKey: "connecting",
   statusClass: "",
   utterances: [],
-  partialResult: null,
+  partialResults: {},
   speakerColorMap: new Map(),
   listeningSince: null,
   pausedElapsed: 0,
@@ -63,7 +63,7 @@ function reducer(state, action) {
           statusKey,
           statusParams,
           statusClass,
-          partialResult: null,
+          partialResults: {},
           utterances: isResume ? state.utterances : [],
           speakerColorMap: isResume ? state.speakerColorMap : new Map(),
           listeningSince: Date.now(),
@@ -87,7 +87,7 @@ function reducer(state, action) {
         statusKey,
         statusParams,
         statusClass,
-        partialResult: null,
+        partialResults: {},
         listeningSince,
         pausedElapsed,
       };
@@ -96,15 +96,26 @@ function reducer(state, action) {
       const d = action.payload;
       const newMap = new Map(state.speakerColorMap);
       getSpeakerIndex(d.speaker, newMap);
+      const nextPartials = { ...state.partialResults };
+      delete nextPartials[d.source || "mic"];
       return {
         ...state,
         utterances: [...state.utterances, d],
-        partialResult: null,
+        partialResults: nextPartials,
         speakerColorMap: newMap,
       };
     }
-    case "PARTIAL":
-      return { ...state, partialResult: action.payload };
+    case "PARTIAL": {
+      const d = action.payload;
+      const source = d.source || "mic";
+      return {
+        ...state,
+        partialResults: {
+          ...state.partialResults,
+          [source]: d,
+        },
+      };
+    }
     case "ERROR": {
       const err = action.payload;
       return {
@@ -141,7 +152,7 @@ function reducer(state, action) {
     case "SET_PENDING":
       return { ...state, pendingAction: true };
     case "CLEAR_TRANSCRIPT":
-      return { ...state, utterances: [], partialResult: null, speakerColorMap: new Map() };
+      return { ...state, utterances: [], partialResults: {}, speakerColorMap: new Map() };
     case "SELECT_SESSION": {
       const { sessionId, sessionData, utterances } = action.payload;
       const newMap = new Map();
@@ -154,7 +165,7 @@ function reducer(state, action) {
         selectedSessionId: sessionId,
         selectedSessionData: sessionData,
         utterances,
-        partialResult: null,
+        partialResults: {},
         speakerColorMap: newMap,
       };
     }
@@ -164,7 +175,7 @@ function reducer(state, action) {
         selectedSessionId: null,
         selectedSessionData: null,
         utterances: [],
-        partialResult: null,
+        partialResults: {},
         speakerColorMap: new Map(),
       };
     case "REFRESH_SESSION_LIST":

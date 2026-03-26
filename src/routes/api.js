@@ -47,9 +47,10 @@ router.get("/settings", (req, res) => {
 
 router.put("/settings", (req, res) => {
   const body = req.body;
-  // Don't overwrite API key with masked value
-  if (body.sonioxApiKey && body.sonioxApiKey.startsWith("••••")) {
-    delete body.sonioxApiKey;
+  // Don't overwrite API key with masked value — preserve the existing key
+  if (!body.sonioxApiKey || body.sonioxApiKey.startsWith("••••")) {
+    const existing = loadSettings();
+    body.sonioxApiKey = existing.sonioxApiKey;
   }
   const updated = saveSettings(body);
   // Mask API key in response
