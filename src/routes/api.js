@@ -89,7 +89,9 @@ router.put("/settings/overlay", (req, res) => {
 router.get("/local/status", async (req, res) => {
   try {
     const settings = loadSettings();
-    const whisperCppPath = join(__dirname, "../../node_modules/nodejs-whisper/cpp/whisper.cpp");
+    const base = join(__dirname, "../../node_modules/nodejs-whisper/cpp/whisper.cpp");
+    const unpacked = base.replace(/app\.asar([/\\])/g, "app.asar.unpacked$1");
+    const whisperCppPath = existsSync(join(unpacked, "models")) ? unpacked : base;
     const execName = process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli";
     const binaryPaths = [
       join(whisperCppPath, "build", "bin", execName),

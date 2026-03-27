@@ -6,7 +6,44 @@
 
 Chạy trên **trình duyệt** (web) hoặc **ứng dụng desktop** (Electron). Hỗ trợ **macOS** và **Windows**.
 
-## Yêu cầu
+## Yêu cầu phần cứng
+
+> Phần này chỉ áp dụng cho chế độ **Local Whisper**. Nếu dùng **Soniox** (cloud), chỉ cần kết nối internet, không yêu cầu phần cứng đặc biệt.
+
+### macOS
+
+| Cấu hình | RAM | Tính năng dùng được |
+|----------|-----|---------------------|
+| Tối thiểu | 8 GB | Whisper tiny/base + Ollama gemma3:1b, không diarization |
+| Đề xuất | Apple Silicon 16 GB | Full: Whisper medium/large-v3-turbo + Ollama gemma3:4b + Diarization |
+| Tối ưu | Apple Silicon 32 GB | Full features với model lớn nhất, rất mượt |
+
+**Khuyến nghị Apple Silicon** (M1/M2/M3 trở lên): unified memory cho phép CPU và GPU dùng chung RAM — Whisper (Metal), Ollama (Metal) và Diarization (MPS) đều được tăng tốc phần cứng, nhanh hơn Intel 4–6x với cùng model.
+
+### Windows
+
+| Cấu hình | RAM | GPU | Tính năng dùng được |
+|----------|-----|-----|---------------------|
+| Tối thiểu | 16 GB | Không cần | Whisper tiny/base + Ollama nhỏ (chậm), không diarization |
+| Đề xuất | 16 GB | NVIDIA 8 GB VRAM (RTX 3060+) | Whisper medium + Ollama gemma3:4b + Diarization |
+| Tối ưu | 32 GB | NVIDIA 12 GB+ VRAM (RTX 4070 Ti+) | Full features thoải mái |
+
+**Lưu ý Windows:** AMD GPU không được hỗ trợ. Không có GPU NVIDIA, diarization không chạy được realtime. Cần cài [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) để kích hoạt GPU acceleration cho Whisper và Ollama.
+
+### Dung lượng ổ cứng (Local Whisper)
+
+| Thành phần | Dung lượng |
+|-----------|-----------|
+| Whisper model base | ~150 MB |
+| Whisper model large-v3-turbo | ~1.6 GB |
+| Ollama + model gemma3:4b | ~3.5 GB |
+| Python venv cho diarization (torch) | ~4–6 GB |
+| Model pyannote diarization | ~1 GB |
+| **Tổng (full)** | **~10–12 GB** |
+
+---
+
+## Yêu cầu phần mềm
 
 - **Node.js** >= 20
 - **ffmpeg** (tự động tải khi build Electron, hoặc cài thủ công cho chế độ web)

@@ -6,7 +6,44 @@ Real-time audio transcription and translation app. Captures audio from microphon
 
 Runs in the **browser** (web) or as a **desktop app** (Electron). Supports **macOS** and **Windows**.
 
-## Requirements
+## Hardware Requirements
+
+> This section applies to **Local Whisper** mode only. If you use **Soniox** (cloud), only an internet connection is required — no special hardware needed.
+
+### macOS
+
+| Configuration | RAM | Features available |
+|--------------|-----|--------------------|
+| Minimum | 8 GB | Whisper tiny/base + Ollama gemma3:1b, no diarization |
+| Recommended | Apple Silicon 16 GB | Full: Whisper medium/large-v3-turbo + Ollama gemma3:4b + Diarization |
+| Optimal | Apple Silicon 32 GB | Full features with largest models, very smooth |
+
+**Apple Silicon recommended** (M1/M2/M3 or later): unified memory allows CPU and GPU to share the same RAM pool — Whisper (Metal), Ollama (Metal), and Diarization (MPS) are all hardware-accelerated, 4–6x faster than Intel with the same model.
+
+### Windows
+
+| Configuration | RAM | GPU | Features available |
+|--------------|-----|-----|-------------------|
+| Minimum | 16 GB | None | Whisper tiny/base + small Ollama model (slow), no diarization |
+| Recommended | 16 GB | NVIDIA 8 GB VRAM (RTX 3060+) | Whisper medium + Ollama gemma3:4b + Diarization |
+| Optimal | 32 GB | NVIDIA 12 GB+ VRAM (RTX 4070 Ti+) | Full features, comfortable |
+
+**Windows notes:** AMD GPUs are not supported. Without an NVIDIA GPU, diarization cannot run in real-time. Install [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) to enable GPU acceleration for Whisper and Ollama.
+
+### Disk space (Local Whisper)
+
+| Component | Size |
+|-----------|------|
+| Whisper model base | ~150 MB |
+| Whisper model large-v3-turbo | ~1.6 GB |
+| Ollama + gemma3:4b model | ~3.5 GB |
+| Python venv for diarization (torch) | ~4–6 GB |
+| pyannote diarization model | ~1 GB |
+| **Total (full)** | **~10–12 GB** |
+
+---
+
+## Software Requirements
 
 - **Node.js** >= 20
 - **ffmpeg** (auto-downloaded when building Electron, or install manually for web mode)

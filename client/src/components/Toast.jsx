@@ -34,7 +34,7 @@ function ToastItem({ toast }) {
       className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg text-sm max-w-sm w-full pointer-events-auto ${variants[toast.type] ?? variants[""]}`}
     >
       <span className="shrink-0 font-bold leading-snug">{icons[toast.type] ?? icons[""]}</span>
-      <span className="flex-1 leading-snug break-words">{text}</span>
+      <span className="flex-1 leading-snug break-words line-clamp-3" title={text}>{text}</span>
       <button
         onClick={dismiss}
         className="cursor-pointer shrink-0 opacity-70 hover:opacity-100 transition-opacity text-base leading-none mt-0.5"
