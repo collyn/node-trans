@@ -85,10 +85,10 @@ This version of Node.js requires NODE_MODULE_VERSION 145.
 
 **Cause:** `better-sqlite3` is a native module that must be compiled separately for Node.js and Electron — they use different ABI versions.
 
-**Fix:** The build script handles this automatically. If it still fails:
+**Fix:** This is now handled automatically — `npm run native:electron` uses `@electron/rebuild -f` to always compile from source. If it still fails:
 ```bash
 rm -rf node_modules/better-sqlite3/build
-npx @electron/rebuild -f -w better-sqlite3
+npm run electron:build:mac
 ```
 
 ### 2. Web app fails after building Electron

@@ -21,7 +21,7 @@
     "setup:diarize": "node scripts/setup-diarize.js",
 
     "native:node": "npm rebuild better-sqlite3",
-    "native:electron": "electron-builder install-app-deps",
+    "native:electron": "npx @electron/rebuild -f -w better-sqlite3",
     "postinstall": "electron-builder install-app-deps"
   },
   "engines": {
