@@ -4,10 +4,27 @@ import compression from "compression";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
 import path from "path";
 
 import apiRoutes from "./routes/api.js";
 import { loadSettings } from "./storage/settings.js";
+
+// Set FFMPEG_PATH from ffmpeg-static when not already set (Electron sets it in main.js)
+if (!process.env.FFMPEG_PATH) {
+  try {
+    const require = createRequire(import.meta.url);
+    process.env.FFMPEG_PATH = require("ffmpeg-static");
+  } catch {
+    // ffmpeg-static not installed — fall back to system ffmpeg
+  }
+}
+
+// Add ffmpeg directory to PATH so subprocesses (Python whisper etc.) can find it
+if (process.env.FFMPEG_PATH) {
+  const ffmpegDir = path.dirname(process.env.FFMPEG_PATH);
+  process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
+}
 
 // Lazy-loaded modules (deferred to first use for faster startup)
 let _history, _createSonioxSession, _createWhisperSession, _createDiarizeSession, _startCapture, _listInputDevices;

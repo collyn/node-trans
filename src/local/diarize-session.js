@@ -40,7 +40,7 @@ function getPythonBin() {
     isWin ? "Scripts\\python.exe" : "bin/python3"
   );
   if (existsSync(venvPython)) return venvPython;
-  return "python3";
+  return isWin ? "py" : "python3";
 }
 
 export function createSession({

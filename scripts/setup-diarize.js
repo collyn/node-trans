@@ -22,7 +22,7 @@ function findPython() {
   if (process.env.DIARIZE_PYTHON) return process.env.DIARIZE_PYTHON;
   // Try well-known compatible versions first (Homebrew paths on macOS)
   const candidates = isWin
-    ? ["python3.12", "python3.11", "python3"]
+    ? ["py", "python3.12", "python3.11", "python3", "python"]
     : [
         "/opt/homebrew/opt/python@3.12/bin/python3.12",
         "/opt/homebrew/opt/python@3.11/bin/python3.11",
@@ -43,7 +43,7 @@ function findPython() {
       }
     } catch {}
   }
-  return "python3"; // last resort
+  return isWin ? "py" : "python3"; // last resort
 }
 
 const pythonBin = findPython();
@@ -65,7 +65,9 @@ try {
   versionStr = execSync(`"${pythonBin}" --version 2>&1`).toString().trim();
 } catch {
   console.error(`ERROR: '${pythonBin}' not found.`);
-  console.error("Install Python 3.11 via: brew install python@3.11");
+  console.error(isWin
+    ? "Install Python 3.11 from: https://www.python.org/downloads/"
+    : "Install Python 3.11 via: brew install python@3.11");
   process.exit(1);
 }
 
@@ -80,8 +82,12 @@ if (major < 3 || (major === 3 && minor < 10)) {
 if (major === 3 && minor > 12) {
   console.warn(`Warning: Python ${major}.${minor} detected. pyannote.audio 3.1.1 is tested`);
   console.warn(`on Python 3.10-3.12. Install Python 3.11 for best compatibility:`);
-  console.warn(`  brew install python@3.11`);
-  console.warn(`  DIARIZE_PYTHON=/opt/homebrew/opt/python@3.11/bin/python3.11 npm run diarize:setup`);
+  if (isWin) {
+    console.warn(`  Download from https://www.python.org/downloads/`);
+  } else {
+    console.warn(`  brew install python@3.11`);
+    console.warn(`  DIARIZE_PYTHON=/opt/homebrew/opt/python@3.11/bin/python3.11 npm run diarize:setup`);
+  }
 }
 
 // Create venv

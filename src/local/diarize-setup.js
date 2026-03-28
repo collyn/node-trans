@@ -14,7 +14,7 @@ const isWin = process.platform === "win32";
 function findPython() {
   if (process.env.DIARIZE_PYTHON) return process.env.DIARIZE_PYTHON;
   const candidates = isWin
-    ? ["python3.12", "python3.11", "python3"]
+    ? ["py", "python3.12", "python3.11", "python3", "python"]
     : [
         "/opt/homebrew/opt/python@3.12/bin/python3.12",
         "/opt/homebrew/opt/python@3.11/bin/python3.11",
@@ -32,7 +32,7 @@ function findPython() {
       }
     } catch {}
   }
-  return "python3";
+  return isWin ? "py" : "python3";
 }
 
 function spawnLines(cmd, args, onLine) {
@@ -68,7 +68,7 @@ export async function runDiarizeSetup(onLine) {
     versionStr = execSync(`"${pythonBin}" --version 2>&1`).toString().trim();
   } catch {
     throw new Error(
-      `Python not found: ${pythonBin}. Install Python 3.11 via: brew install python@3.11`
+      `Python not found: ${pythonBin}. Install Python 3.11 via: ${isWin ? "https://www.python.org/downloads/" : "brew install python@3.11"}`
     );
   }
 
@@ -82,7 +82,9 @@ export async function runDiarizeSetup(onLine) {
   }
   if (major === 3 && minor > 12) {
     onLine(`Warning: Python ${major}.${minor} may have compatibility issues with pyannote.audio 3.1.1`);
-    onLine(`Recommended: brew install python@3.11`);
+    onLine(isWin
+      ? `Recommended: Install Python 3.11 from https://www.python.org/downloads/`
+      : `Recommended: brew install python@3.11`);
   }
 
   onLine(`Creating virtual environment at: ${VENV_DIR}`);

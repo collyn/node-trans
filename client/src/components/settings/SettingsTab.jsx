@@ -398,7 +398,7 @@ export default function SettingsModal({ onClose }) {
                         ) : (<>
                           {localStatus && localTranslationEngine === "ollama" && (
                             <p className={`text-xs font-medium mt-1 ${localStatus.ollamaAvailable ? "text-green-500" : "text-amber-500"}`}>
-                              {localStatus.ollamaAvailable ? "✓ " : "○ "}{localStatus.ollamaAvailable ? t("ollamaRunning") : t("ollamaNotRunning")}
+                              {localStatus.ollamaAvailable ? "✓ " : "○ "}{localStatus.ollamaAvailable ? t("ollamaRunning") : t(localStatus.platform === "win32" ? "ollamaNotRunningWin" : "ollamaNotRunning")}
                             </p>
                           )}
                           {localStatus && localTranslationEngine === "libretranslate" && (

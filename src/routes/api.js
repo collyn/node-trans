@@ -173,7 +173,7 @@ router.get("/local/status", async (req, res) => {
       diarizePyReady = false;
     }
 
-    res.json({ whisperBuilt, modelPresent, ollamaAvailable, ollamaModelReady, libreTranslateAvailable, diarizePyReady });
+    res.json({ whisperBuilt, modelPresent, ollamaAvailable, ollamaModelReady, libreTranslateAvailable, diarizePyReady, platform: process.platform });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
