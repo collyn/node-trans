@@ -1,15 +1,15 @@
-# node-trans — Luồng xử lý & Kiến trúc
+# node-trans — Architecture & Data Flow
 
-## Tổng quan
+## Overview
 
-Ứng dụng dịch âm thanh real-time. Thu âm từ mic hoặc system audio, phiên âm (STT), dịch thuật, và lưu lịch sử. Chạy dưới dạng web app hoặc Electron desktop app.
+A real-time audio translation app. Captures audio from microphone or system output, transcribes (STT), translates, and stores session history. Runs as a web app or Electron desktop app.
 
 ---
 
-## Luồng xử lý chính
+## Main Data Flow
 
 ```
-Thiết bị âm thanh (mic / system)
+Audio device (mic / system audio)
         │
         ▼
    FFmpeg process
@@ -17,7 +17,7 @@ Thiết bị âm thanh (mic / system)
         │
         ▼
   capture.js (ChunkTransform)
-  Chuẩn hóa thành chunks 120ms (3.840 bytes)
+  Normalizes into 120ms chunks (3,840 bytes)
         │
         ├─────────────────────────────────────────────┐
         ▼                                             ▼
@@ -26,22 +26,22 @@ Thiết bị âm thanh (mic / system)
         │                                             │
         ▼                                             ▼
   Soniox Cloud API                   whisper.cpp (via nodejs-whisper)
-  · Phiên âm real-time               · Buffer 3s, silence detection
-  · Dịch thuật (cloud)               · Xuất text + timestamps
-  · Nhận diện người nói (cloud)      · Dịch qua Ollama / LibreTranslate (nếu bật)
+  · Real-time transcription          · 3s buffer, silence detection
+  · Cloud translation                · Outputs text + timestamps
+  · Speaker diarization (cloud)      · Translation via Ollama / LibreTranslate (if enabled)
         │                                             │
         │                              ┌──────────────┴──────────────┐
         │                              ▼                             ▼
-        │                    [Không có diarization]    [Có HF Token → Diarization]
+        │                    [No diarization]          [HF Token → Diarization]
         │                    speaker: null              diarize-session.js
         │                                                     │
         │                                                     ▼
         │                                              diarize.py (Python subprocess)
         │                                              · openai-whisper (CPU)
         │                                              · pyannote/speaker-diarization-3.1 (MPS/CUDA)
-        │                                              · Cửa sổ 10s, stride 5s
+        │                                              · 10s window, 5s stride
         │                                              · speaker: SPEAKER_00, SPEAKER_01...
-        │                                              [Fallback nếu Python lỗi → whisper-session]
+        │                                              [Fallback to whisper-session on error]
         │
         ▼
    Socket.IO (server.js)
@@ -50,9 +50,9 @@ Thiết bị âm thanh (mic / system)
         ├──────────────────────────────┐
         ▼                             ▼
    React UI (browser)          Overlay window (Electron)
-   · Hiển thị transcript       · Always-on-top
-   · Màu theo speaker          · Trong suốt, frameless
-   · Lịch sử session
+   · Live transcript           · Always-on-top
+   · Speaker colors            · Transparent, frameless
+   · Session history
         │
         ▼
    SQLite (history.db)
@@ -61,44 +61,44 @@ Thiết bị âm thanh (mic / system)
 
 ---
 
-## Các thành phần
+## Components
 
 ### Backend (`src/`)
 
-| File | Vai trò |
-|------|---------|
-| `server.js` | Express + Socket.IO. Quản lý sessions, điều phối audio capture và STT |
-| `audio/capture.js` | Spawn FFmpeg, chuẩn hóa PCM thành 120ms chunks, hỗ trợ pause/resume |
-| `audio/devices.js` | Liệt kê thiết bị âm thanh (parse ffmpeg output) |
-| `soniox/session.js` | Wrapper Soniox SDK real-time. Phiên âm + dịch + diarization qua cloud |
-| `local/whisper-session.js` | STT offline. Buffer 3s, silence detection, gọi whisper.cpp |
-| `local/diarize-session.js` | Wrapper Python subprocess. Gửi audio qua stdin, nhận utterances qua stdout. Fallback về whisper-session nếu lỗi |
-| `local/diarize.py` | Python worker: pyannote + openai-whisper. Nhận base64 PCM, trả JSON utterances với speaker labels |
-| `local/translate.js` | Gọi Ollama hoặc LibreTranslate. Non-fatal: lỗi trả về empty string |
-| `storage/history.js` | SQLite (better-sqlite3). CRUD sessions, utterances, speaker aliases |
-| `storage/settings.js` | Đọc/ghi `settings.json`. Load đồng bộ |
+| File | Role |
+|------|------|
+| `server.js` | Express + Socket.IO. Manages sessions, orchestrates audio capture and STT |
+| `audio/capture.js` | Spawns FFmpeg, normalizes PCM into 120ms chunks, supports pause/resume |
+| `audio/devices.js` | Lists audio devices by parsing ffmpeg output |
+| `soniox/session.js` | Soniox SDK wrapper. Real-time transcription + translation + diarization via cloud |
+| `local/whisper-session.js` | Offline STT. 3s buffer, silence detection, calls whisper.cpp |
+| `local/diarize-session.js` | Python subprocess wrapper. Sends audio via stdin, receives utterances via stdout. Falls back to whisper-session on failure |
+| `local/diarize.py` | Python worker: pyannote + openai-whisper. Receives base64 PCM, returns JSON utterances with speaker labels |
+| `local/translate.js` | Calls Ollama or LibreTranslate. Non-fatal: returns empty string on error |
+| `storage/history.js` | SQLite (better-sqlite3). CRUD for sessions, utterances, speaker aliases |
+| `storage/settings.js` | Reads/writes `settings.json`. Loaded synchronously |
 | `routes/api.js` | REST API: settings, sessions, devices, local status |
 
 ### Frontend (`client/src/`)
 
-| File | Vai trò |
-|------|---------|
-| `context/SocketContext.jsx` | State trung tâm (useReducer). Kết nối Socket.IO, quản lý utterances, speaker colors, session selection |
-| `components/live/` | UI real-time: controls, transcript, utterance rendering |
-| `components/history/` | Duyệt lịch sử, xem chi tiết, đổi tên speaker, export |
-| `components/settings/` | Form cài đặt: engine, audio, translation, diarization, overlay |
-| `i18n/` | Đa ngôn ngữ EN/VI. `t()` function từ I18nContext |
+| File | Role |
+|------|------|
+| `context/SocketContext.jsx` | Central state (useReducer). Socket.IO connection, utterances, speaker colors, session selection |
+| `components/live/` | Real-time UI: controls, transcript display, utterance rendering |
+| `components/history/` | Session history browsing, detail view, speaker renaming, export |
+| `components/settings/` | Settings form: engine, audio, translation, diarization, overlay |
+| `i18n/` | Bilingual UI (EN/VI). `t()` function from I18nContext |
 
 ### Electron (`electron/`)
 
-| File | Vai trò |
-|------|---------|
-| `main.js` | Start Express server nội bộ → load app URL. Quản lý main window + overlay window. IPC bridge |
-| `preload.js` | Expose `window.electronAPI` cho renderer (IPC an toàn) |
+| File | Role |
+|------|------|
+| `main.js` | Starts the Express server internally, loads the app URL. Manages main window + overlay window. IPC bridge |
+| `preload.js` | Exposes `window.electronAPI` to the renderer (safe IPC via contextBridge) |
 
 ---
 
-## Hai engine STT
+## STT Engines
 
 ### Soniox (Cloud)
 
@@ -106,34 +106,34 @@ Thiết bị âm thanh (mic / system)
 Audio chunks → Soniox SDK → Cloud API
                               · Model: stt-rt-v4
                               · Real-time streaming
-                              · Tự động dịch
-                              · Speaker diarization built-in
+                              · Built-in translation
+                              · Built-in speaker diarization
 ```
 
-Ưu điểm: độ trễ thấp, chất lượng cao, không cần setup.
-Nhược điểm: cần API key, cần internet.
+Pros: low latency, high quality, no local setup required.
+Cons: requires API key and internet connection.
 
 ### Local Whisper (Offline)
 
 ```
-Audio chunks → Buffer 3s → whisper.cpp (C++ binary)
-                                  · Phiên âm text
-                                  · Có/không có timestamps
-                 [nếu có HF token]
-                 → diarize.py (Python subprocess)
-                       · pyannote: ai đang nói?
-                       · openai-whisper: nói gì?
-                       · Kết hợp → utterance + speaker
+Audio chunks → 3s buffer → whisper.cpp (C++ binary)
+                                  · Transcription
+                                  · Timestamps
+                [if HF token set]
+                → diarize.py (Python subprocess)
+                      · pyannote: who is speaking?
+                      · openai-whisper: what are they saying?
+                      · Combined → utterance + speaker label
 ```
 
-Ưu điểm: offline hoàn toàn, miễn phí.
-Nhược điểm: cần build whisper.cpp, cần setup Python cho diarization.
+Pros: fully offline, free.
+Cons: requires building whisper.cpp; diarization requires Python setup.
 
 ---
 
-## Giao tiếp Node.js ↔ Python (Diarization)
+## Node.js ↔ Python Protocol (Diarization)
 
-Protocol: newline-delimited JSON qua stdin/stdout
+Newline-delimited JSON over stdin/stdout:
 
 ```
 Node → Python:
@@ -147,89 +147,89 @@ Python → Node:
   {"type": "error",    "message": "..."}
 ```
 
-Python worker khởi động 1 lần/session (tránh reload model). Timeout 120s chờ `ready`. Nếu quá thời gian hoặc crash → tự động fallback sang whisper-session (speaker: null).
+The Python worker starts once per session (avoids reloading models). Waits up to 120s for `ready`. If it times out or crashes, automatically falls back to whisper-session (speaker: null).
 
 ---
 
-## Cơ sở dữ liệu (SQLite)
+## Database (SQLite)
 
-Đường dẫn: `~/.node-trans/history.db` (web) hoặc `userData/data/history.db` (Electron)
+Path: `~/.node-trans/history.db` (web) or `userData/data/history.db` (Electron)
 
 ```sql
-sessions      -- id, title, started_at, ended_at, audio_source, target_language, device_name, context
-utterances    -- id, session_id, timestamp, speaker, original_text, original_language,
-              --    translated_text, translation_language, source
-speaker_aliases -- session_id, speaker ("SPEAKER_00"), alias (tên người dùng đặt)
+sessions        -- id, title, started_at, ended_at, audio_source, target_language, device_name, context
+utterances      -- id, session_id, timestamp, speaker, original_text, original_language,
+                --    translated_text, translation_language, source
+speaker_aliases -- session_id, speaker ("SPEAKER_00"), alias (user-defined name)
 ```
 
 ---
 
-## Cài đặt & File cấu hình
+## Settings & Config Files
 
-| File | Vị trí |
-|------|--------|
-| `settings.json` | `~/.node-trans/settings.json` |
-| `history.db` | `~/.node-trans/history.db` |
-| `diarize-venv` | `~/.node-trans/diarize-venv/` (Python venv) |
+| File | Location |
+|------|----------|
+| `settings.json` | `~/.node-trans/settings.json` (web) / `userData/data/settings.json` (Electron) |
+| `history.db` | `~/.node-trans/history.db` (web) / `userData/data/history.db` (Electron) |
+| `diarize-venv` | `~/.node-trans/diarize-venv/` (Python virtual environment) |
 
-Các trường cấu hình chính:
+Key settings:
 
 ```
-audioSource           mic / system / both
-transcriptionEngine   soniox / local-whisper
-whisperModel          tiny / base / small / medium / large-v3-turbo / large
-whisperLanguage       auto / en / vi / ...
+audioSource             mic / system / both
+transcriptionEngine     soniox / local-whisper
+whisperModel            tiny / base / small / medium / large-v3-turbo / large
+whisperLanguage         auto / en / vi / ...
 localTranslationEngine  none / ollama / libretranslate
-ollamaModel           gemma3:4b / llama3.2 / ...
-hfToken               Hugging Face READ token (cho diarization)
-targetLanguage        vi / en / ja / ...
+ollamaModel             gemma3:4b / llama3.2 / ...
+hfToken                 Hugging Face READ token (for diarization)
+targetLanguage          vi / en / ja / ...
 ```
 
 ---
 
-## Luồng session
+## Session Lifecycle
 
 ```
-User nhấn "Start"
+User clicks "Start"
     │
     ▼
-Socket emit "start-listening" { sessionId?, context? }
+Socket emits "start-listening" { sessionId?, context? }
     │
-    ├── sessionId có? → Reopen session từ DB (giữ nguyên audio source, language, context)
-    └── sessionId không có? → Tạo session mới
-    │
-    ▼
-Resolve thiết bị âm thanh
-    · Mic: theo setting hoặc device index 0
-    · System: theo setting hoặc auto-detect BlackHole (macOS) / VB-CABLE (Windows)
+    ├── sessionId provided → reopen session from DB (reuse audio source, language, context)
+    └── no sessionId → create new session
     │
     ▼
-Tạo STT session (1 hoặc 2 nếu audioSource = "both")
+Resolve audio devices
+    · Mic: from settings or device index 0
+    · System: from settings or auto-detect BlackHole (macOS) / VB-CABLE (Windows)
     │
     ▼
-Bắt đầu stream audio → STT
+Create STT session(s) (1 or 2 if audioSource = "both")
     │
-    ├── onPartial → socket.emit("partial-result") → UI hiển thị text đang nhận
+    ▼
+Start streaming audio → STT
+    │
+    ├── onPartial → socket.emit("partial-result") → UI shows in-progress text
     └── onUtterance → DB.addUtterance() + socket.emit("utterance") → UI + Overlay
     │
-User nhấn "Stop"
+User clicks "Stop"
     │
     ▼
-stopSession: dừng FFmpeg, dừng STT, DB.endSession()
+stopSession: stop FFmpeg, stop STT, DB.endSession()
 ```
 
 ---
 
-## Yêu cầu hệ thống
+## System Requirements
 
-| Thành phần | Bắt buộc | Ghi chú |
-|------------|----------|---------|
-| ffmpeg | ✅ | Thu âm |
-| Node.js 18+ | ✅ | Runtime |
-| whisper.cpp | Chỉ khi dùng Local Whisper | `npm run whisper:build` |
-| Python 3.11 | Chỉ khi dùng Diarization | `npm run diarize:setup` |
-| Ollama | Chỉ khi dùng Ollama translation | `ollama serve` phải chạy |
-| LibreTranslate | Chỉ khi dùng LibreTranslate | Server phải chạy |
-| BlackHole (macOS) | Chỉ khi thu system audio | Hoặc chỉ định device thủ công |
-| Soniox API Key | Chỉ khi dùng Soniox | cloud.soniox.com |
-| HuggingFace Token | Chỉ khi dùng Diarization | huggingface.co/settings/tokens |
+| Component | Required | Notes |
+|-----------|----------|-------|
+| Node.js >= 20 | ✅ | Runtime |
+| ffmpeg | ✅ | Audio capture |
+| whisper.cpp | Only for Local Whisper | `npm run setup:whisper` |
+| Python 3.10–3.12 | Only for Diarization | `npm run setup:diarize` |
+| Ollama | Only for Ollama translation | `ollama serve` must be running |
+| LibreTranslate | Only for LibreTranslate | Server must be running |
+| BlackHole (macOS) | Only for system audio capture | Or configure device manually |
+| Soniox API Key | Only for Soniox engine | cloud.soniox.com |
+| HuggingFace Token | Only for Diarization | huggingface.co/settings/tokens |

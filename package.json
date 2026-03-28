@@ -5,21 +5,27 @@
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
-    "start": "npm run rebuild:node && npm run build && node src/server.js",
-    "rebuild:node": "npm rebuild better-sqlite3",
+    "dev": "npm run native:node && npx concurrently \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "node --watch src/server.js",
     "dev:client": "vite --config client/vite.config.js",
-    "dev": "npm run rebuild:node && npx concurrently \"npm:dev:server\" \"npm:dev:client\"",
+    "start": "npm run native:node && npm run build && node src/server.js",
     "build": "vite build --config client/vite.config.js",
-    "electron:dev": "npm run electron:rebuild && concurrently \"npm:dev:client\" \"electron electron/main.js\"",
-    "electron:rebuild": "electron-builder install-app-deps",
-    "electron:build": "npm run build && npm run electron:rebuild && electron-builder --config electron-builder.config.js",
-    "electron:build:mac": "npm run build && npm run electron:rebuild && electron-builder --config electron-builder.config.js --mac",
-    "electron:build:win": "npm run build && npm run electron:rebuild && electron-builder --config electron-builder.config.js --win",
-    "postinstall": "electron-builder install-app-deps",
-    "download:ffmpeg": "node scripts/download-ffmpeg.js",
-    "whisper:build": "node scripts/build-whisper.js",
-    "diarize:setup": "node scripts/setup-diarize.js"
+
+    "electron:dev": "npm run native:electron && concurrently \"npm:dev:client\" \"electron electron/main.js\"",
+    "electron:build": "npm run build && npm run native:electron && electron-builder --config electron-builder.config.js",
+    "electron:build:mac": "npm run build && npm run native:electron && electron-builder --config electron-builder.config.js --mac",
+    "electron:build:win": "npm run build && npm run native:electron && electron-builder --config electron-builder.config.js --win",
+
+    "setup:ffmpeg": "node scripts/download-ffmpeg.js",
+    "setup:whisper": "node scripts/build-whisper.js",
+    "setup:diarize": "node scripts/setup-diarize.js",
+
+    "native:node": "npm rebuild better-sqlite3",
+    "native:electron": "electron-builder install-app-deps",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "keywords": [],
   "author": "",

@@ -2,127 +2,120 @@
 
 ## Prerequisites
 
-- **Node.js** >= 18
-- **ffmpeg**: web app mode auto-uses `ffmpeg-static` from `node_modules`; Electron bundles its own
-- **cmake** + **Visual Studio Build Tools** (Windows) hoac **Xcode CLI Tools** (macOS): can thiet neu build whisper-cli tu source
-- **Python 3.10-3.12**: can thiet cho tinh nang diarization (nhan dien nguoi noi)
+- **Node.js** >= 20 LTS (uses built-in `fetch` and `node --watch`; Node 22 recommended)
+- **ffmpeg**: web mode uses `ffmpeg-static` automatically; Electron bundles its own binary
+- **cmake** + **Visual Studio Build Tools** (Windows) or **Xcode CLI Tools** (macOS): required only if building whisper-cli from source
+- **Python 3.10–3.12**: required only for speaker diarization feature
 
-## Development (Web App)
+---
+
+## Running the Web App
 
 ```bash
-# Cai dependencies
-npm install
-
-# Chay dev server (Express + Vite concurrently)
-npm run dev
+npm install       # Install dependencies
+npm run dev       # Dev mode (Express + Vite with hot-reload)
+npm start         # Production mode (build frontend then start server)
 ```
 
-- Frontend: http://localhost:5173 (Vite proxy API + Socket.IO toi backend)
+- Frontend dev: http://localhost:5173
 - Backend: http://localhost:3000
 
-### Luu y ve ffmpeg
+---
 
-`server.js` tu dong resolve `ffmpeg-static` tu `node_modules` va them vao `PATH`.
-Cac subprocess (Python whisper, diarize.py) cung se tim duoc ffmpeg qua `PATH` ma khong can cai he thong.
-
-## Electron Development
+## Running the Electron App
 
 ```bash
-# Chay Electron dev (rebuild native modules cho Electron truoc)
-npm run electron:dev
+npm run electron:dev   # Dev mode (Vite + Electron with hot-reload)
 ```
 
-## Build Electron App
+---
 
-### Cac buoc build da duoc tu dong hoa trong npm scripts:
+## Building the Electron App
 
 ```bash
-# Build cho Windows
-npm run electron:build:win
-
-# Build cho macOS
-npm run electron:build:mac
-
-# Build cho platform hien tai
-npm run electron:build
+npm run electron:build:mac   # Build for macOS
+npm run electron:build:win   # Build for Windows
+npm run electron:build       # Build for current platform
 ```
 
-### Flow build (tu dong):
+**Build flow (automated):**
+1. `npm run build` — build frontend (Vite) into `dist/`
+2. `npm run native:electron` — rebuild `better-sqlite3` for the correct Electron ABI
+3. `electron-builder` — package the app into `release/`
 
-1. `npm run build` — build frontend (Vite) ra `dist/`
-2. `npm run electron:rebuild` — rebuild native modules (`better-sqlite3`) cho dung ABI cua Electron
-3. `electron-builder` — dong goi app vao `release/`
-
-### Output:
-
-- `release/Node Trans Setup x.x.x.exe` — Windows installer (NSIS)
+**Output:**
+- `release/Node Trans-x.x.x-arm64-mac.zip` — macOS
+- `release/Node Trans Setup x.x.x.exe` — Windows installer
 - `release/Node Trans x.x.x.exe` — Windows portable
-- `release/win-unpacked/` — unpacked app (de test nhanh)
 
-## Cac loi thuong gap va cach xu ly
+---
+
+## One-time Setup Scripts
+
+These only need to be run once:
+
+| Command | When needed |
+|---------|-------------|
+| `npm run setup:ffmpeg` | Before building Electron for the first time (copies ffmpeg into `ffmpeg-bin/`) |
+| `npm run setup:whisper` | To pre-build `whisper-cli` (optional — auto-builds on first use if skipped) |
+| `npm run setup:diarize` | To enable speaker diarization (installs Python venv + pyannote.audio) |
+
+> **Note**: `setup:diarize` can also be triggered from the UI: Settings → Engine → "Setup Diarization"
+
+---
+
+## Internal Scripts
+
+| Command | Purpose |
+|---------|---------|
+| `npm run native:node` | Rebuild `better-sqlite3` for Node.js (run after building Electron to restore web mode) |
+| `npm run native:electron` | Rebuild `better-sqlite3` for Electron (run before packaging) |
+
+---
+
+## Common Issues
 
 ### 1. `NODE_MODULE_VERSION` mismatch (better-sqlite3)
 
-**Trieu chung**: App Electron khong hien thi, log bao loi:
+**Symptom:**
 ```
 was compiled against NODE_MODULE_VERSION 127.
 This version of Node.js requires NODE_MODULE_VERSION 145.
 ```
 
-**Nguyen nhan**: `better-sqlite3` la native module, can compile rieng cho Node.js (dev/web) va Electron (desktop). ABI version khac nhau.
+**Cause:** `better-sqlite3` is a native module that must be compiled separately for Node.js and Electron — they use different ABI versions.
 
-**Cach xu ly**:
-- Build script da tu dong chay `electron:rebuild` truoc khi dong goi
-- `electron-builder.config.js` dat `npmRebuild: false` de tranh electron-builder ghi de binary da rebuild dung
-- Neu van loi, thu xoa cache va rebuild thu cong:
-  ```bash
-  rm -rf node_modules/better-sqlite3/build
-  npx @electron/rebuild -f -w better-sqlite3
-  ```
-
-### 2. Chuyen doi giua Electron va Web App
-
-Sau khi build Electron, `better-sqlite3` trong `node_modules` la ban Electron (khong tuong thich Node.js).
-
+**Fix:** The build script handles this automatically. If it still fails:
 ```bash
-# Truoc khi chay web app (npm run dev), chay:
-npm run rebuild:node
-
-# Truoc khi build Electron, khong can lam gi — build script tu dong rebuild
+rm -rf node_modules/better-sqlite3/build
+npx @electron/rebuild -f -w better-sqlite3
 ```
 
-### 3. Khong tim thay ffmpeg
+### 2. Web app fails after building Electron
 
-**Trieu chung**: Toast loi "Khong tim thay ffmpeg" khi chay web app.
+**Cause:** After an Electron build, `better-sqlite3` in `node_modules` is the Electron version and is incompatible with plain Node.js.
 
-**Nguyen nhan**: `server.js` can ffmpeg de capture audio.
+**Fix:**
+```bash
+npm run native:node   # Restore the Node.js-compatible version
+```
 
-**Cach xu ly**: `ffmpeg-static` (devDependency) duoc tu dong su dung. Dam bao da chay `npm install`. Neu van loi, cai ffmpeg he thong va them vao PATH.
+### 3. Error: "No such file or directory: ffmpeg"
 
-### 4. Python whisper bao `[WinError 2] The system cannot find the file specified`
+**Cause:** A Python subprocess cannot find ffmpeg in `PATH`.
 
-**Nguyen nhan**: Python whisper library can ffmpeg trong PATH de xu ly audio.
+**Fix:** `electron/main.js` and `src/server.js` automatically add the ffmpeg directory to `PATH`. If the error persists, ensure `npm install` has been run (installs `ffmpeg-static`).
 
-**Cach xu ly**: `server.js` tu dong them ffmpeg directory vao `PATH`. Neu van loi, dam bao ffmpeg co trong system PATH.
+---
 
-### 5. Ollama hint khong phu hop tren Windows
-
-Hint hien thi phu thuoc platform (detect tu API response):
-- **Windows**: "Mo ung dung Ollama tu Start Menu"
-- **macOS/Linux**: "Khoi dong bang: ollama serve"
-
-## Cau truc file quan trong cho build
+## Key Files
 
 ```
-electron-builder.config.js   — Cau hinh electron-builder
-  npmRebuild: false          — QUAN TRONG: khong de true, se ghi de rebuild
-  asarUnpack: better-sqlite3 — Unpack native module ra ngoai asar
+electron-builder.config.js
+  npmRebuild: false        — IMPORTANT: keep false to prevent overwriting the correctly rebuilt binary
+  asarUnpack               — Keeps native modules and diarize.py on the real filesystem (outside ASAR)
 
-electron/main.js             — Set FFMPEG_PATH + them vao PATH truoc khi import server
-src/server.js                — Set FFMPEG_PATH tu ffmpeg-static (web mode) + them vao PATH
-
-package.json scripts:
-  electron:rebuild           — electron-builder install-app-deps
-  electron:build:win         — build + rebuild + electron-builder --win
-  rebuild:node               — npm rebuild better-sqlite3 (restore cho Node.js)
+electron/main.js           — Sets FFMPEG_PATH and adds it to PATH before importing the server
+src/server.js              — Sets FFMPEG_PATH from ffmpeg-static (web mode) and adds it to PATH
+src/local/diarize-session.js — Resolves diarize.py path, handles ASAR path in packaged Electron
 ```
