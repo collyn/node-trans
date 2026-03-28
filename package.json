@@ -1,6 +1,6 @@
 {
   "name": "node-trans",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Real-time audio translation app using Soniox API",
   "type": "module",
   "main": "electron/main.js",
@@ -10,16 +10,13 @@
     "dev:client": "vite --config client/vite.config.js",
     "start": "npm run native:node && npm run build && node src/server.js",
     "build": "vite build --config client/vite.config.js",
-
     "electron:dev": "npm run native:electron && concurrently \"npm:dev:client\" \"electron electron/main.js\"",
     "electron:build": "npm run build && npm run native:electron && electron-builder --config electron-builder.config.js",
     "electron:build:mac": "npm run build && npm run native:electron && electron-builder --config electron-builder.config.js --mac",
     "electron:build:win": "npm run build && npm run native:electron && electron-builder --config electron-builder.config.js --win",
-
     "setup:ffmpeg": "node scripts/download-ffmpeg.js",
     "setup:whisper": "node scripts/build-whisper.js",
     "setup:diarize": "node scripts/setup-diarize.js",
-
     "native:node": "npm rebuild better-sqlite3",
     "native:electron": "npx @electron/rebuild -f -w better-sqlite3",
     "postinstall": "electron-builder install-app-deps"
