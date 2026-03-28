@@ -25,6 +25,10 @@ if (isDev) {
   );
 }
 
+// Add ffmpeg directory to PATH so nodejs-whisper (which hardcodes "ffmpeg") can find it
+const ffmpegDir = path.dirname(process.env.FFMPEG_PATH);
+process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
+
 // Data directory: use Electron's userData path
 process.env.ELECTRON_USER_DATA = app.getPath("userData");
 
