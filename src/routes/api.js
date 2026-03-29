@@ -4,6 +4,8 @@ import { join } from "path";
 import { fileURLToPath } from "url";
 import { exec } from "child_process";
 import { loadSettings, saveSettings } from "../storage/settings.js";
+import { createLogger } from "../logger.js";
+const log = createLogger("api");
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -77,7 +79,10 @@ async function checkDiarizeStatus() {
         const p = join(os.homedir(), ".node-trans", venvName, pyBin);
         if (existsSync(p)) { pythonBin = p; break; }
       }
-      if (!pythonBin) pythonBin = isWin ? "py" : "python3";
+      if (!pythonBin) {
+        const { resolveFallbackPythonBin } = await import("../local/python-utils.js");
+        pythonBin = await resolveFallbackPythonBin();
+      }
     }
     const verifyScript = [
       "import torchaudio",
@@ -310,7 +315,7 @@ router.delete("/sessions/:id", async (req, res) => {
     deleteSession(Number(req.params.id));
     res.json({ ok: true });
   } catch (err) {
-    console.error("Delete session error:", err);
+    log.error("Delete session error", err);
     res.status(500).json({ error: err.message });
   }
 });

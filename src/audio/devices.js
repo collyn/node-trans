@@ -1,4 +1,7 @@
 import { spawn, execFile } from "child_process";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("devices");
 
 const IS_WIN = process.platform === "win32";
 const FFMPEG_BIN = () => process.env.FFMPEG_PATH || "ffmpeg";
@@ -141,13 +144,13 @@ function listInputDevicesWindows() {
     });
 
     ffmpeg.on("error", (err) => {
-      console.error("[devices] ffmpeg spawn error:", err.message);
+      log.error("ffmpeg spawn error", err);
       resolve([]);
     });
     ffmpeg.on("close", () => {
-      console.log("[devices] ffmpeg dshow raw output:\n" + stderr);
+      log.debug("ffmpeg dshow raw output", { stderr });
       const devices = parseDshow(stderr);
-      console.log("[devices] parsed devices:", devices);
+      log.debug("Parsed devices", { devices });
       resolve(devices);
     });
   });

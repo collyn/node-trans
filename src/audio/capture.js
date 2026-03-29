@@ -1,5 +1,8 @@
 import { spawn } from "child_process";
 import { Transform } from "stream";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("capture");
 
 const CHUNK_SIZE = 3840; // 120ms at 16kHz mono 16-bit
 const IS_WIN = process.platform === "win32";
@@ -44,6 +47,8 @@ export function startCapture(device) {
   );
 
   const ffmpegBin = process.env.FFMPEG_PATH || "ffmpeg";
+  log.info("Starting capture", { device, args: [ffmpegBin, ...args].join(" ") });
+
   const ffmpeg = spawn(ffmpegBin, args, {
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -61,8 +66,12 @@ export function startCapture(device) {
   const chunker = new ChunkTransform();
   ffmpeg.stdout.pipe(gate).pipe(chunker);
 
-  // Suppress ffmpeg stderr noise
-  ffmpeg.stderr.on("data", () => {});
+  // Accumulate stderr for error diagnosis (capped to avoid unbounded growth)
+  let stderrBuf = "";
+  ffmpeg.stderr.on("data", (d) => {
+    stderrBuf += d.toString("utf8");
+    if (stderrBuf.length > 8192) stderrBuf = stderrBuf.slice(-8192);
+  });
 
   return {
     stream: chunker,
@@ -77,6 +86,7 @@ export function startCapture(device) {
     },
 
     stop() {
+      log.info("Stopping capture", { device });
       if (IS_WIN) {
         // On Windows, write 'q' to stdin for graceful exit, then force kill as fallback
         try {
@@ -91,9 +101,13 @@ export function startCapture(device) {
     },
 
     onError(callback) {
-      ffmpeg.on("error", callback);
+      ffmpeg.on("error", (err) => {
+        log.error("ffmpeg process error", err);
+        callback(err);
+      });
       ffmpeg.on("exit", (code) => {
         if (code && code !== 0 && code !== 255) {
+          log.error("ffmpeg exited with error", { code, device, stderr: stderrBuf.trim() });
           callback(new Error(`ffmpeg exited with code ${code}`));
         }
       });

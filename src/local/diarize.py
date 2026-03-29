@@ -147,34 +147,44 @@ class DiarizeWorker:
         self.lock = threading.Lock()
 
     def load_models(self):
-        print("[diarize.py] Loading Whisper model...", file=sys.stderr, flush=True)
-        # openai-whisper on CPU — MPS has known bugs with short audio segments
-        self.whisper_model = whisper.load_model(self.whisper_model_name, device="cpu")
+        try:
+            print("[diarize.py] Loading Whisper model...", file=sys.stderr, flush=True)
+            # openai-whisper on CPU — MPS has known bugs with short audio segments
+            self.whisper_model = whisper.load_model(self.whisper_model_name, device="cpu")
 
-        print(f"[diarize.py] Loading pyannote pipeline (device={self.device})...",
-              file=sys.stderr, flush=True)
-        # PyTorch 2.6 changed torch.load default to weights_only=True.
-        # Pyannote checkpoints embed custom classes; patch torch.load to default
-        # weights_only=False so lightning_fabric's pl_load works without changes.
-        _orig_torch_load = torch.load
-        def _patched_torch_load(*args, **kwargs):
-            # lightning_fabric >= 2.4 explicitly passes weights_only=True;
-            # pyannote checkpoints require weights_only=False to unpickle custom classes.
-            kwargs["weights_only"] = False
-            return _orig_torch_load(*args, **kwargs)
-        torch.load = _patched_torch_load
-        self.pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-            use_auth_token=self.hf_token,
-        )
-        if self.device != "cpu":
-            try:
-                self.pipeline.to(torch.device(self.device))
-            except Exception as e:
-                print(f"[diarize.py] Warning: could not move pipeline to {self.device}: {e}",
-                      file=sys.stderr, flush=True)
+            print(f"[diarize.py] Loading pyannote pipeline (device={self.device})...",
+                  file=sys.stderr, flush=True)
+            # PyTorch 2.6 changed torch.load default to weights_only=True.
+            # Pyannote checkpoints embed custom classes; patch torch.load to default
+            # weights_only=False so lightning_fabric's pl_load works without changes.
+            _orig_torch_load = torch.load
+            def _patched_torch_load(*args, **kwargs):
+                # lightning_fabric >= 2.4 explicitly passes weights_only=True;
+                # pyannote checkpoints require weights_only=False to unpickle custom classes.
+                kwargs["weights_only"] = False
+                return _orig_torch_load(*args, **kwargs)
+            torch.load = _patched_torch_load
+            self.pipeline = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                use_auth_token=self.hf_token,
+            )
+            if self.pipeline is None:
+                raise RuntimeError(
+                    "Pipeline.from_pretrained returned None — check your HF token "
+                    "and that you have accepted the pyannote/speaker-diarization-3.1 "
+                    "model terms at https://huggingface.co/pyannote/speaker-diarization-3.1"
+                )
+            if self.device != "cpu":
+                try:
+                    self.pipeline.to(torch.device(self.device))
+                except Exception as e:
+                    print(f"[diarize.py] Warning: could not move pipeline to {self.device}: {e}",
+                          file=sys.stderr, flush=True)
 
-        emit({"type": "ready"})
+            emit({"type": "ready"})
+        except Exception as e:
+            emit({"type": "error", "message": f"Failed to load diarization models: {e}"})
+            sys.exit(1)
 
     def add_audio(self, pcm_bytes):
         with self.lock:

@@ -14,7 +14,7 @@ const isWin = process.platform === "win32";
 function findPython() {
   if (process.env.DIARIZE_PYTHON) return process.env.DIARIZE_PYTHON;
   const candidates = isWin
-    ? ["py", "python3.12", "python3.11", "python3", "python"]
+    ? ["python", "py", "python3.12", "python3.11", "python3"]
     : [
         "/opt/homebrew/opt/python@3.12/bin/python3.12",
         "/opt/homebrew/opt/python@3.11/bin/python3.11",
@@ -32,7 +32,7 @@ function findPython() {
       }
     } catch {}
   }
-  return isWin ? "py" : "python3";
+  return isWin ? "python" : "python3";
 }
 
 function spawnLines(cmd, args, onLine) {

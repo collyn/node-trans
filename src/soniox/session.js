@@ -1,5 +1,8 @@
 import { RealtimeUtteranceBuffer, SonioxNodeClient } from "@soniox/node";
 import { PassThrough } from "stream";
+import { createLogger } from "../logger.js";
+
+const log = createLogger("soniox");
 
 export function createSession({ targetLanguage = "vi", languageHints = ["en"], apiKey, context = null } = {}) {
   const clientOpts = apiKey ? { api_key: apiKey } : {};
@@ -60,7 +63,9 @@ export function createSession({ targetLanguage = "vi", languageHints = ["en"], a
     config,
 
     async connect() {
+      log.info("Connecting to Soniox", { model: config.model, targetLanguage, languageHints });
       await session.connect();
+      log.info("Soniox connected");
     },
 
     async startStreaming() {
@@ -145,7 +150,10 @@ export function createSession({ targetLanguage = "vi", languageHints = ["en"], a
     },
 
     onError(callback) {
-      session.on("error", callback);
+      session.on("error", (err) => {
+        log.error("Soniox session error", err);
+        callback(err);
+      });
     },
   };
 }

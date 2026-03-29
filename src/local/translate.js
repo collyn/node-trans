@@ -13,6 +13,9 @@ const LANG_NAMES = {
  * Translate text using a local translation service (Ollama or LibreTranslate).
  * Returns { translated, lang } — translated is empty string on failure or when disabled.
  */
+import { createLogger } from "../logger.js";
+const log = createLogger("translate");
+
 export async function translateText(text, sourceLang, settings) {
   const { localTranslationEngine, ollamaBaseUrl, ollamaModel, libreTranslateUrl, targetLanguage, context } = settings;
 
@@ -56,7 +59,7 @@ export async function translateText(text, sourceLang, settings) {
     }
   } catch (err) {
     // Translation failure is non-fatal — log and return empty
-    console.warn(`[local/translate] ${localTranslationEngine} error:`, err.message);
+    log.warn(`${localTranslationEngine} error`, err);
   }
 
   return { translated: "", lang: null };

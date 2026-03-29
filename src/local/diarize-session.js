@@ -15,6 +15,10 @@ import { existsSync } from "fs";
 import os from "os";
 import { translateText } from "./translate.js";
 import { createSession as createWhisperSession } from "./whisper-session.js";
+import { createLogger } from "../logger.js";
+import { resolveFallbackPythonBin } from "./python-utils.js";
+
+const log = createLogger("diarize");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -32,7 +36,7 @@ const DIARIZE_PY = resolveDiarizePy();
 // How long to wait for Python 'ready' before falling back (covers model download)
 const READY_TIMEOUT_MS = 120_000;
 
-function getPythonBin() {
+async function getPythonBin() {
   if (process.env.DIARIZE_PYTHON) return process.env.DIARIZE_PYTHON;
   const isWin = process.platform === "win32";
   const pyBin = isWin ? "Scripts\\python.exe" : "bin/python3";
@@ -40,7 +44,7 @@ function getPythonBin() {
     const p = join(os.homedir(), ".node-trans", venvName, pyBin);
     if (existsSync(p)) return p;
   }
-  return isWin ? "py" : "python3";
+  return resolveFallbackPythonBin();
 }
 
 export function createSession({
@@ -100,15 +104,15 @@ export function createSession({
     switch (msg.type) {
       case "ready":
         ready = true;
-        console.log("[diarize-session] Python worker ready");
+        log.info("Python worker ready");
         break;
       case "utterance":
         handleUtterance(msg).catch((err) =>
-          console.error("[diarize-session] Translation error:", err)
+          log.error("Translation error", err)
         );
         break;
       case "error":
-        console.error("[diarize-session] Python error:", msg.message);
+        log.error("Python error", new Error(msg.message));
         _onError?.(new Error(msg.message));
         break;
     }
@@ -116,7 +120,7 @@ export function createSession({
 
   async function activateFallback() {
     if (useFallback) return;
-    console.warn("[diarize-session] Activating fallback (whisper, no speaker labels)");
+    log.warn("Activating fallback (whisper, no speaker labels)");
     useFallback = true;
     fallbackSession = createWhisperSession({
       targetLanguage, whisperLanguage, whisperModel,
@@ -135,20 +139,20 @@ export function createSession({
     try {
       pyProcess.stdin.write(JSON.stringify(obj) + "\n");
     } catch (err) {
-      console.error("[diarize-session] Stdin write failed:", err.message);
+      log.error("Stdin write failed", err);
     }
   }
 
   return {
     async connect() {
-      const pythonBin = getPythonBin();
+      const pythonBin = await getPythonBin();
       const pyArgs = [
         DIARIZE_PY,
         "--hf-token", hfToken,
         "--whisper-model", whisperModel,
       ];
 
-      console.log(`[diarize-session] Spawning ${pythonBin} diarize.py`);
+      log.info(`Spawning ${pythonBin} diarize.py`);
 
       try {
         pyProcess = spawn(pythonBin, pyArgs, {
@@ -160,12 +164,17 @@ export function createSession({
           },
         });
       } catch (err) {
-        console.error("[diarize-session] Spawn failed:", err.message);
+        log.error("Spawn failed", err);
         await activateFallback();
         return;
       }
 
-      pyProcess.stderr.on("data", (d) => process.stderr.write(d));
+      // Accumulate stderr for error diagnosis
+      let stderrBuf = "";
+      pyProcess.stderr.on("data", (d) => {
+        stderrBuf += d.toString("utf8");
+        if (stderrBuf.length > 10240) stderrBuf = stderrBuf.slice(-10240);
+      });
 
       pyProcess.stdout.on("data", (data) => {
         stdoutBuf += data.toString("utf8");
@@ -176,21 +185,23 @@ export function createSession({
 
       pyProcess.on("exit", (code, signal) => {
         if (!stopped) {
-          console.error(`[diarize-session] Python exited unexpectedly (code=${code} signal=${signal})`);
-          activateFallback().catch(console.error);
+          if (stderrBuf.trim()) log.debug("diarize.py stderr", { stderr: stderrBuf.trim() });
+          log.error("Python exited unexpectedly", { code, signal });
+          activateFallback().catch((err) => log.error("activateFallback failed", err));
         }
       });
 
       pyProcess.on("error", (err) => {
-        console.error("[diarize-session] Process error:", err.message);
-        activateFallback().catch(console.error);
+        log.error("Process error", err);
+        activateFallback().catch((err) => log.error("activateFallback failed", err));
       });
 
       // Wait for 'ready' or timeout → fallback
       await new Promise((resolve) => {
         const timeout = setTimeout(async () => {
           if (!ready && !useFallback) {
-            console.warn("[diarize-session] Ready timeout — activating fallback");
+            log.warn("Ready timeout — activating fallback");
+            if (stderrBuf.trim()) log.debug("diarize.py stderr at timeout", { stderr: stderrBuf.trim() });
             await activateFallback();
           }
           resolve();

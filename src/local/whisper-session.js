@@ -15,13 +15,16 @@ import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 import os from "os";
 import { translateText } from "./translate.js";
+import { createLogger } from "../logger.js";
+import { resolveFallbackPythonBin } from "./python-utils.js";
+const log = createLogger("whisper");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Wait up to 60 s for the model to load before giving up
 const READY_TIMEOUT_MS = 60_000;
 
-function getPythonBin() {
+async function getPythonBin() {
   if (process.env.DIARIZE_PYTHON) return process.env.DIARIZE_PYTHON;
   const isWin = process.platform === "win32";
   // Reuse the diarize-venv which already has openai-whisper installed
@@ -30,7 +33,7 @@ function getPythonBin() {
     isWin ? "Scripts\\python.exe" : "bin/python3"
   );
   if (existsSync(venvPython)) return venvPython;
-  return isWin ? "py" : "python3";
+  return resolveFallbackPythonBin();
 }
 
 function resolveWorkerScript() {
@@ -81,7 +84,7 @@ export function createSession({
     try {
       pyProcess.stdin.write(JSON.stringify(obj) + "\n");
     } catch (err) {
-      console.error("[whisper-session] stdin write failed:", err.message);
+      log.error("stdin write failed", err);
     }
   }
 
@@ -93,6 +96,7 @@ export function createSession({
     switch (msg.type) {
       case "ready":
         ready = true;
+        log.info("Whisper model loaded", { model: whisperModel });
         break;
 
       case "partial": {
@@ -123,12 +127,14 @@ export function createSession({
 
   return {
     async connect() {
-      const pythonBin = getPythonBin();
+      const pythonBin = await getPythonBin();
       const workerScript = resolveWorkerScript();
 
       const args = [workerScript, "--model", whisperModel];
       if (whisperLanguage !== "auto") args.push("--language", whisperLanguage);
       if (translateToEnglish) args.push("--translate");
+
+      log.info("Spawning whisper-worker", { pythonBin, model: whisperModel, language: whisperLanguage });
 
       try {
         pyProcess = spawn(pythonBin, args, {
@@ -143,7 +149,12 @@ export function createSession({
         );
       }
 
-      pyProcess.stderr.on("data", (d) => process.stderr.write(d));
+      // Accumulate stderr for error diagnosis
+      let stderrBuf = "";
+      pyProcess.stderr.on("data", (d) => {
+        stderrBuf += d.toString("utf8");
+        if (stderrBuf.length > 10240) stderrBuf = stderrBuf.slice(-10240);
+      });
 
       pyProcess.stdout.on("data", (data) => {
         stdoutBuf += data.toString("utf8");
@@ -152,26 +163,39 @@ export function createSession({
         for (const line of lines) handleLine(line).catch(() => {});
       });
 
+      let connectReject = null;
+
       pyProcess.on("error", (err) => {
-        _onError?.(new Error(`whisper-worker process error: ${err.message}`));
+        log.error("whisper-worker process error", err);
+        const e = new Error(`whisper-worker process error: ${err.message}`);
+        _onError?.(e);
+        connectReject?.(e);
+        connectReject = null;
       });
 
       pyProcess.on("exit", (code, signal) => {
         if (!stopped) {
-          _onError?.(new Error(`whisper-worker exited unexpectedly (code=${code} signal=${signal})`));
+          if (stderrBuf.trim()) log.debug("whisper-worker stderr", { stderr: stderrBuf.trim() });
+          log.error("whisper-worker exited unexpectedly", { code, signal });
+          const e = new Error(`whisper-worker exited unexpectedly (code=${code} signal=${signal})`);
+          _onError?.(e);
+          connectReject?.(e);
+          connectReject = null;
         }
       });
 
       // Wait for 'ready' (model loaded) before returning
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(new Error("Timed out waiting for whisper-worker to load model")),
-          READY_TIMEOUT_MS
-        );
+        connectReject = reject;
+        const timeout = setTimeout(() => {
+          connectReject = null;
+          reject(new Error("Timed out waiting for whisper-worker to load model"));
+        }, READY_TIMEOUT_MS);
         const poll = setInterval(() => {
           if (ready) {
             clearInterval(poll);
             clearTimeout(timeout);
+            connectReject = null;
             resolve();
           }
         }, 100);

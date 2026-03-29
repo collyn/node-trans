@@ -9,6 +9,9 @@ import path from "path";
 
 import apiRoutes from "./routes/api.js";
 import { loadSettings } from "./storage/settings.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("server");
 
 // Set FFMPEG_PATH from ffmpeg-static when not already set (Electron sets it in main.js)
 if (!process.env.FFMPEG_PATH) {
@@ -89,8 +92,14 @@ app.use("/api", apiRoutes);
 // Active sessions per socket
 const activeSessions = new Map();
 
+// Log and emit an error event to the client in one call
+function emitError(socket, payload) {
+  log.warn(`Emit error: ${payload.key}`, { socketId: socket.id, ...payload.params && { params: payload.params } });
+  socket.emit("error", payload);
+}
+
 io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
+  log.info("Client connected", { socketId: socket.id });
 
   socket.on("start-listening", async (opts) => {
     // Clean up any existing session
@@ -105,7 +114,7 @@ io.on("connection", (socket) => {
       const engine = settings.transcriptionEngine || "soniox";
 
       if (engine === "soniox" && !settings.sonioxApiKey) {
-        socket.emit("error", { key: "errNoApiKey" });
+        emitError(socket, { key: "errNoApiKey" });
         return;
       }
 
@@ -118,7 +127,7 @@ io.on("connection", (socket) => {
         // Resume existing session and re-use prior context unless overridden
         const existing = history.getSession(resumeSessionId);
         if (!existing || !existing.ended_at) {
-          socket.emit("error", { key: "errSessionNotFound" });
+          emitError(socket, { key: "errSessionNotFound" });
           return;
         }
         history.reopenSession(resumeSessionId);
@@ -165,7 +174,7 @@ io.on("connection", (socket) => {
           if (systemDevice) {
             systemCaptureDev = isWin ? systemDevice.name : systemDevice.index;
           } else {
-            socket.emit("error", { key: "errSystemDeviceNotFound", params: { index: systemIndex } });
+            emitError(socket, { key: "errSystemDeviceNotFound", params: { index: systemIndex } });
           }
         } else {
           // Auto-detect: macOS: BlackHole, Windows: VB-CABLE / Stereo Mix / CABLE Output
@@ -176,7 +185,7 @@ io.on("connection", (socket) => {
           if (loopback) {
             systemCaptureDev = isWin ? loopback.name : loopback.index;
           } else {
-            socket.emit("error", { key: isWin ? "errNoLoopbackWin" : "errNoLoopbackMac" });
+            emitError(socket, { key: isWin ? "errNoLoopbackWin" : "errNoLoopbackMac" });
           }
         }
       }
@@ -194,6 +203,19 @@ io.on("connection", (socket) => {
         dbSessionId = history.createSession(audioSource, historyTargetLang, deviceName, sessionContext);
       }
 
+      const sttMode = engine === "local-whisper"
+        ? (settings.hfToken ? "diarize" : "whisper")
+        : "soniox";
+      log.info("Session starting", {
+        socketId: socket.id,
+        sessionId: dbSessionId,
+        engine: sttMode,
+        source: audioSource,
+        micLang: micTargetLanguage,
+        systemLang: systemTargetLanguage,
+        resume: !!resumeSessionId,
+      });
+
       const state = {
         dbSessionId,
         audioSource,
@@ -209,14 +231,14 @@ io.on("connection", (socket) => {
       for (const source of sources) {
         const captureDev = source === "mic" ? micCaptureDev : systemCaptureDev;
         if (captureDev == null) {
-          socket.emit("error", { key: "errNoDevice", params: { source } });
+          emitError(socket, { key: "errNoDevice", params: { source } });
           continue;
         }
 
         // Start audio capture
         const capture = startCapture(captureDev);
         capture.onError((err) => {
-          socket.emit("error", { key: "errAudioCapture", params: { source, detail: err.message } });
+          emitError(socket, { key: "errAudioCapture", params: { source, detail: err.message } });
         });
 
         // Create STT session — Soniox (cloud) or local Whisper
@@ -266,7 +288,7 @@ io.on("connection", (socket) => {
 
         stt.onError((err) => {
           const key = engine === "local-whisper" ? "errWhisper" : "errSoniox";
-          socket.emit("error", { key, params: { detail: err.message } });
+          emitError(socket, { key, params: { detail: err.message } });
         });
 
         await stt.connect();
@@ -287,15 +309,15 @@ io.on("connection", (socket) => {
 
       activeSessions.set(socket.id, state);
       socket.emit("status", { listening: true, sessionId: dbSessionId, audioSource });
-      console.log(`Started listening: socket=${socket.id}, session=${dbSessionId}, source=${audioSource}`);
+      log.info("Started listening", { socketId: socket.id, sessionId: dbSessionId, source: audioSource });
     } catch (err) {
       const key = err.message?.includes("authenticate") || err.message?.includes("401") || err.message?.includes("Unauthorized")
         ? "errInvalidApiKey"
         : err.message?.includes("ENOTFOUND") || err.message?.includes("ECONNREFUSED")
         ? "errNetwork"
         : "errStartFailed";
-      socket.emit("error", { key, params: { detail: err.message } });
-      console.error("Start error:", err);
+      emitError(socket, { key, params: { detail: err.message } });
+      log.error("Start error", err);
     }
   });
 
@@ -308,7 +330,7 @@ io.on("connection", (socket) => {
     }
     state.paused = true;
     socket.emit("status", { listening: true, paused: true, sessionId: state.dbSessionId, audioSource: state.audioSource });
-    console.log(`Paused: socket=${socket.id}`);
+    log.info("Paused", { socketId: socket.id });
   });
 
   socket.on("resume-listening", () => {
@@ -320,7 +342,7 @@ io.on("connection", (socket) => {
     }
     state.paused = false;
     socket.emit("status", { listening: true, paused: false, sessionId: state.dbSessionId, audioSource: state.audioSource });
-    console.log(`Resumed: socket=${socket.id}`);
+    log.info("Resumed", { socketId: socket.id });
   });
 
   socket.on("stop-listening", async () => {
@@ -330,13 +352,15 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", async () => {
     await stopSession(socket.id);
-    console.log("Client disconnected:", socket.id);
+    log.info("Client disconnected", { socketId: socket.id });
   });
 });
 
 async function stopSession(socketId) {
   const state = activeSessions.get(socketId);
   if (!state) return;
+
+  log.info("Stopping session", { socketId, sessionId: state.dbSessionId });
 
   for (const capture of state.captures) {
     capture.stop();
@@ -361,7 +385,7 @@ export async function startServer(overridePort) {
   const PORT = overridePort || process.env.PORT || settings.port || 3000;
   return new Promise((resolve) => {
     server.listen(PORT, () => {
-      console.log(`Server running at http://localhost:${PORT}`);
+      log.info(`Server running at http://localhost:${PORT}`);
       resolve(PORT);
     });
   });

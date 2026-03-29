@@ -85,7 +85,7 @@ function findSystemPython() {
 
 function pythonCandidates() {
   return isWin
-    ? ["py", "python3.12", "python3.11", "python3", "python"]
+    ? ["python", "py", "python3.12", "python3.11", "python3"]
     : [
         "/opt/homebrew/opt/python@3.12/bin/python3.12",
         "/opt/homebrew/opt/python@3.11/bin/python3.11",

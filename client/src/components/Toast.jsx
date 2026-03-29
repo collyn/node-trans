@@ -9,7 +9,7 @@ const variants = {
 };
 
 const icons = {
-  error:   "✕",
+  error:   "⚠",
   success: "✓",
   "":      "ℹ",
 };

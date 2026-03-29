@@ -6,7 +6,7 @@
   "main": "electron/main.js",
   "scripts": {
     "dev": "npm run native:node && npx concurrently \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "node --watch src/server.js",
+    "dev:server": "NODE_ENV=development node --watch src/server.js",
     "dev:client": "vite --config client/vite.config.js",
     "start": "npm run native:node && npm run build && node src/server.js",
     "build": "vite build --config client/vite.config.js",
