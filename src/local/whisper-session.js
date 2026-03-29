@@ -15,8 +15,7 @@ import { fileURLToPath } from "url";
 import { existsSync } from "fs";
 import { translateText } from "./translate.js";
 import { createLogger } from "../logger.js";
-import { resolveFallbackPythonBin } from "./python-utils.js";
-import { getWhisperPythonAsync } from "./whisper-setup.js";
+import { getVenvPython } from "./python-utils.js";
 const log = createLogger("whisper");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,12 +23,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Wait up to 60 s for the model to load before giving up
 const READY_TIMEOUT_MS = 60_000;
 
-async function getPythonBin() {
-  if (process.env.DIARIZE_PYTHON) return process.env.DIARIZE_PYTHON;
-  const venvPython = await getWhisperPythonAsync();
-  if (venvPython) return venvPython;
-  return resolveFallbackPythonBin();
-}
 
 function resolveWorkerScript() {
   // When packaged in Electron, source files live inside app.asar (virtual FS).
@@ -122,7 +115,7 @@ export function createSession({
 
   return {
     async connect() {
-      const pythonBin = await getPythonBin();
+      const pythonBin = getVenvPython();
       const workerScript = resolveWorkerScript();
 
       const args = [workerScript, "--model", whisperModel];

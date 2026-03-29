@@ -28,11 +28,14 @@ async function lazyExport() {
 
 async function checkWhisperStatus(modelName) {
   try {
-    const { getWhisperPythonAsync, isModelDownloaded, checkSystemPython } = await import("../local/whisper-setup.js");
-    const [py, systemPython] = await Promise.all([getWhisperPythonAsync(), checkSystemPython()]);
+    const { getVenvPython } = await import("../local/python-utils.js");
+    const { isModelDownloaded, checkSystemPython } = await import("../local/whisper-setup.js");
+    let whisperPyReady = false;
+    try { getVenvPython(); whisperPyReady = true; } catch {}
+    const systemPython = await checkSystemPython();
     return {
-      whisperPyReady: !!py,
-      whisperModelDownloaded: py ? isModelDownloaded(modelName) : false,
+      whisperPyReady,
+      whisperModelDownloaded: whisperPyReady ? isModelDownloaded(modelName) : false,
       pythonAvailable: systemPython.found,
       pythonVersion: systemPython.version || null,
     };
@@ -70,20 +73,8 @@ async function checkLibreTranslateStatus(url) {
 async function checkDiarizeStatus() {
   let diarizePyReady = false;
   try {
-    let pythonBin = process.env.DIARIZE_PYTHON;
-    if (!pythonBin) {
-      const { default: os } = await import("os");
-      const isWin = process.platform === "win32";
-      const pyBin = isWin ? "Scripts\\python.exe" : "bin/python3";
-      for (const venvName of ["venv", "diarize-venv"]) {
-        const p = join(os.homedir(), ".node-trans", venvName, pyBin);
-        if (existsSync(p)) { pythonBin = p; break; }
-      }
-      if (!pythonBin) {
-        const { resolveFallbackPythonBin } = await import("../local/python-utils.js");
-        pythonBin = await resolveFallbackPythonBin();
-      }
-    }
+    const { getVenvPython } = await import("../local/python-utils.js");
+    const pythonBin = getVenvPython();
     const verifyScript = [
       "import torchaudio",
       "hasattr(torchaudio,'set_audio_backend') or setattr(torchaudio,'set_audio_backend',lambda *a,**kw:None)",

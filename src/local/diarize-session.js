@@ -12,11 +12,10 @@ import { spawn } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
-import os from "os";
 import { translateText } from "./translate.js";
 import { createSession as createWhisperSession } from "./whisper-session.js";
 import { createLogger } from "../logger.js";
-import { resolveFallbackPythonBin } from "./python-utils.js";
+import { getVenvPython } from "./python-utils.js";
 
 const log = createLogger("diarize");
 
@@ -36,16 +35,6 @@ const DIARIZE_PY = resolveDiarizePy();
 // How long to wait for Python 'ready' before falling back (covers model download)
 const READY_TIMEOUT_MS = 120_000;
 
-async function getPythonBin() {
-  if (process.env.DIARIZE_PYTHON) return process.env.DIARIZE_PYTHON;
-  const isWin = process.platform === "win32";
-  const pyBin = isWin ? "Scripts\\python.exe" : "bin/python3";
-  for (const venvName of ["venv", "diarize-venv"]) {
-    const p = join(os.homedir(), ".node-trans", venvName, pyBin);
-    if (existsSync(p)) return p;
-  }
-  return resolveFallbackPythonBin();
-}
 
 export function createSession({
   targetLanguage = "vi",
@@ -145,7 +134,7 @@ export function createSession({
 
   return {
     async connect() {
-      const pythonBin = await getPythonBin();
+      const pythonBin = getVenvPython();
       const pyArgs = [
         DIARIZE_PY,
         "--hf-token", hfToken,

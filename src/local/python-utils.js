@@ -4,6 +4,9 @@
  */
 
 import { spawn } from "child_process";
+import { existsSync } from "fs";
+import { join } from "path";
+import os from "os";
 
 const isWin = process.platform === "win32";
 
@@ -49,4 +52,20 @@ export function resolveFallbackPythonBin() {
   }
   _probe = chain.catch(() => WIN_CANDIDATES[0]); // best-effort last resort
   return _probe;
+}
+
+const VENV_PYTHON = join(
+  os.homedir(), ".node-trans", "venv",
+  isWin ? "Scripts\\python.exe" : "bin/python3"
+);
+
+/**
+ * Returns the path to the shared venv Python binary.
+ * Throws if the venv has not been created yet (user must run Setup in Settings).
+ */
+export function getVenvPython() {
+  if (!existsSync(VENV_PYTHON)) {
+    throw new Error("Python environment not found. Please run Whisper/Diarization setup in Settings first.");
+  }
+  return VENV_PYTHON;
 }

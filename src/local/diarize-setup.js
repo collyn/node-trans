@@ -32,7 +32,7 @@ function findPython() {
       }
     } catch {}
   }
-  return isWin ? "python" : "python3";
+  return isWin ? "py" : "python3";
 }
 
 function spawnLines(cmd, args, onLine) {
