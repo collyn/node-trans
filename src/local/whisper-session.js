@@ -5,18 +5,18 @@
  * then streams audio chunks via stdin. Results arrive as newline-delimited
  * JSON on stdout: "partial" for live text, "utterance" for final commits.
  *
- * Requires Python with openai-whisper installed. The diarize-venv at
- * ~/.node-trans/diarize-venv already satisfies this if diarize setup was run.
+ * Requires Python with openai-whisper installed. Reuses the venv created by
+ * Whisper/Diarization setup at ~/.node-trans/venv (or legacy diarize-venv/whisper-venv).
  */
 
 import { spawn } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
-import os from "os";
 import { translateText } from "./translate.js";
 import { createLogger } from "../logger.js";
 import { resolveFallbackPythonBin } from "./python-utils.js";
+import { getWhisperPythonAsync } from "./whisper-setup.js";
 const log = createLogger("whisper");
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -26,13 +26,8 @@ const READY_TIMEOUT_MS = 60_000;
 
 async function getPythonBin() {
   if (process.env.DIARIZE_PYTHON) return process.env.DIARIZE_PYTHON;
-  const isWin = process.platform === "win32";
-  // Reuse the diarize-venv which already has openai-whisper installed
-  const venvPython = join(
-    os.homedir(), ".node-trans", "diarize-venv",
-    isWin ? "Scripts\\python.exe" : "bin/python3"
-  );
-  if (existsSync(venvPython)) return venvPython;
+  const venvPython = await getWhisperPythonAsync();
+  if (venvPython) return venvPython;
   return resolveFallbackPythonBin();
 }
 
