@@ -12,6 +12,7 @@ Protocol IN:
 
 Protocol OUT:
   {"type": "ready"}
+  {"type": "partial", "text": "..."}
   {"type": "utterance", "text": "...", "speaker": "SPEAKER_00", "start": 0.5, "end": 3.2}
   {"type": "error", "message": "..."}
 """
@@ -20,8 +21,6 @@ import sys
 import os
 import json
 import base64
-import wave
-import tempfile
 import threading
 import time
 
@@ -81,14 +80,14 @@ _hf.hf_hub_download = _compat_hf_hub_download
 import huggingface_hub.file_download as _hf_fd
 _hf_fd.hf_hub_download = _compat_hf_hub_download
 
-import whisper
+from faster_whisper import WhisperModel
 from pyannote.audio import Pipeline
 
 SAMPLE_RATE = 16000
 BYTES_PER_SAMPLE = 2
-WINDOW_SECS = 10.0
-STRIDE_SECS = 5.0
-MIN_FLUSH_SECS = 3.0
+WINDOW_SECS = 6.0       # reduced from 10s for faster first result
+STRIDE_SECS = 3.0       # keeps 3s overlap for context
+MIN_FLUSH_SECS = 2.0    # reduced from 3s
 SILENCE_RMS_THRESHOLD = 300
 SILENCE_TRIGGER_SECS = 1.5
 
@@ -111,14 +110,6 @@ def pcm_rms(pcm_bytes):
         return 0.0
     samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32)
     return float(np.sqrt(np.mean(samples ** 2)))
-
-
-def write_wav(pcm_bytes, path):
-    with wave.open(path, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(pcm_bytes)
 
 
 def dominant_speaker(diarization, rel_start, rel_end):
@@ -148,9 +139,14 @@ class DiarizeWorker:
 
     def load_models(self):
         try:
-            print("[diarize.py] Loading Whisper model...", file=sys.stderr, flush=True)
-            # openai-whisper on CPU — MPS has known bugs with short audio segments
-            self.whisper_model = whisper.load_model(self.whisper_model_name, device="cpu")
+            print("[diarize.py] Loading Whisper model (faster-whisper)...",
+                  file=sys.stderr, flush=True)
+            # faster-whisper on CPU with int8 quantization (fast, no GPU contention with pyannote)
+            self.whisper_model = WhisperModel(
+                self.whisper_model_name,
+                device="cpu",
+                compute_type="int8",
+            )
 
             print(f"[diarize.py] Loading pyannote pipeline (device={self.device})...",
                   file=sys.stderr, flush=True)
@@ -159,8 +155,6 @@ class DiarizeWorker:
             # weights_only=False so lightning_fabric's pl_load works without changes.
             _orig_torch_load = torch.load
             def _patched_torch_load(*args, **kwargs):
-                # lightning_fabric >= 2.4 explicitly passes weights_only=True;
-                # pyannote checkpoints require weights_only=False to unpickle custom classes.
                 kwargs["weights_only"] = False
                 return _orig_torch_load(*args, **kwargs)
             torch.load = _patched_torch_load
@@ -244,39 +238,55 @@ class DiarizeWorker:
             ).start()
 
     def _process_window(self, pcm_bytes, win_start_secs):
-        path = None
         try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                path = f.name
-            write_wav(pcm_bytes, path)
+            # Convert PCM to float32 (shared by both whisper and pyannote)
+            pcm_f32 = (np.frombuffer(pcm_bytes, dtype=np.int16)
+                       .astype(np.float32) / 32768.0)
 
-            # Transcribe with Whisper (returns segment-level timestamps)
-            result = self.whisper_model.transcribe(path, verbose=False)
-            segments = result.get("segments", [])
+            # Step 1: Transcribe with faster-whisper (fast, CPU int8)
+            segments_gen, _info = self.whisper_model.transcribe(
+                pcm_f32,
+                beam_size=1,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+                condition_on_previous_text=False,
+                no_speech_threshold=0.6,
+            )
+            segments = list(segments_gen)
+
             if not segments:
                 return
 
-            # Diarize using waveform tensor (avoids extra temp file)
-            pcm_f32 = (np.frombuffer(pcm_bytes, dtype=np.int16)
-                       .astype(np.float32) / 32768.0)
+            # Step 2: Emit partial results immediately (before diarization)
+            # This gives the user fast text feedback while pyannote runs
+            partial_texts = []
+            for seg in segments:
+                abs_start = win_start_secs + seg.start
+                text = seg.text.strip()
+                if text and abs_start >= self.last_committed_end - 0.5:
+                    partial_texts.append(text)
+            if partial_texts:
+                emit({"type": "partial", "text": " ".join(partial_texts)})
+
+            # Step 3: Diarize using waveform tensor
             waveform = torch.from_numpy(pcm_f32).unsqueeze(0)  # [1, N]
             diarization = self.pipeline({
                 "waveform": waveform,
                 "sample_rate": SAMPLE_RATE,
             })
 
+            # Step 4: Match speakers to segments and emit final utterances
             for seg in segments:
-                rel_start = float(seg["start"])
-                rel_end = float(seg["end"])
+                rel_start = seg.start
+                rel_end = seg.end
                 abs_start = win_start_secs + rel_start
                 abs_end = win_start_secs + rel_end
-                text = seg["text"].strip()
+                text = seg.text.strip()
 
                 if not text:
                     continue
 
                 # Dedup: skip if this segment was already committed
-                # (0.5s tolerance for Whisper boundary jitter across overlapping windows)
                 if abs_start < self.last_committed_end - 0.5:
                     continue
 
@@ -294,11 +304,6 @@ class DiarizeWorker:
         except Exception as e:
             emit({"type": "error", "message": str(e)})
         finally:
-            if path:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
             with self.lock:
                 self.processing = False
 

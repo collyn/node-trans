@@ -70,7 +70,7 @@ function write(level, tag, message, extra) {
   bytesWritten += Buffer.byteLength(line, "utf8");
   if (bytesWritten >= MAX_SIZE) rotate();
 
-  if (IS_DEV) {
+  if (IS_DEV && level !== "DEBUG") {
     const out = level === "ERROR" || level === "WARN" ? process.stderr : process.stdout;
     out.write(line);
   }

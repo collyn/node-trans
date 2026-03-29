@@ -71,6 +71,7 @@ export const en = {
   sectionEngine: "Transcription Engine",
   sectionAudio: "Audio",
   sectionTranslation: "Translation",
+  enableTranslation: "Enable Translation",
   sectionDiarization: "Speaker Diarization",
 
   // Engine settings
@@ -111,6 +112,7 @@ export const en = {
   whisperRemoveModelConfirm: "Remove this model file from disk?",
 
   // Diarization settings
+  enableDiarization: "Enable Speaker Diarization",
   diarizationHint: "Identifies who is speaking. Requires a free Hugging Face account.",
   hfToken: "Hugging Face Token:",
   hfTokenPlaceholder: "hf_...",
@@ -124,6 +126,22 @@ export const en = {
   diarizeSetupError: "Installation failed",
   diarizeSetupHint: "Downloads and installs the required components (~3 GB, 5–10 min). Only needed once.",
   errNoDiarizeToken: "Hugging Face token not configured. Go to Settings to enter your token.",
+
+  // Startup check
+  startupTitle: "Setup Required",
+  startupDesc: "Some components needed for local transcription are not installed yet:",
+  startupMissingWhisper: "Whisper engine not installed",
+  startupMissingWhisperModel: "Whisper model not downloaded",
+  startupMissingDiarize: "Speaker diarization dependencies not installed",
+  startupMissingOllama: "Ollama is not running (start it manually)",
+  startupInstall: "Install Now",
+  startupSkip: "Later",
+  startupClose: "Done",
+  startupRetry: "Retry",
+  startupInstalling: "Installing...",
+  startupStepWhisper: "Installing Whisper engine & downloading model...",
+  startupStepDiarize: "Installing speaker diarization dependencies...",
+  startupDone: "All components installed successfully!",
 
   // Settings
   sonioxApiKey: "Soniox API Key:",
@@ -188,16 +206,23 @@ export const en = {
   overlayTextAlign: "Text Alignment:",
   overlayBgColor: "Background:",
   overlayFontFamily: "Font Family:",
-  overlayDisplayMode: "Display Mode:",
   overlayAlignLeft: "Left",
   overlayAlignCenter: "Center",
   overlayAlignRight: "Right",
   overlayBgDark: "Dark",
   overlayBgLight: "Light",
-  overlayModeBoth: "Partial + Final",
-  overlayModeFinal: "Final only",
-  overlayModePartial: "Partial only",
   overlayMaxLines: "Max Lines:",
+  overlayFinalContent: "Final Results:",
+  overlayPartialContent: "Realtime Results:",
+  overlayContentOff: "Off",
+  overlayContentTranslated: "Translated only",
+  overlayContentOriginal: "Original only",
+  overlayContentBoth: "Both",
+  overlayTranslatedStyle: "Translated Text",
+  overlayOriginalStyle: "Original Text",
+  overlayFontSize: "Font Size:",
+  overlayColor: "Color:",
+  overlayColorAuto: "Auto",
 };
 
 export const vi = {
@@ -273,6 +298,7 @@ export const vi = {
   sectionEngine: "Engine phi\u00EAn \u00E2m",
   sectionAudio: "\u00C2m thanh",
   sectionTranslation: "D\u1ECBch thu\u1EADt",
+  enableTranslation: "B\u1EADt d\u1ECBch thu\u1EADt",
   sectionDiarization: "Nh\u1EADn di\u1EC7n ng\u01B0\u1EDDi n\u00F3i",
 
   // Engine settings
@@ -313,6 +339,7 @@ export const vi = {
   whisperRemoveModelConfirm: "X\u00F3a file model n\u00E0y kh\u1ECFi \u1ED5 \u0111\u0129a?",
 
   // Diarization settings
+  enableDiarization: "Bật nhận diện người nói",
   diarizationHint: "Nh\u1EADn bi\u1EBFt ai \u0111ang n\u00F3i trong cu\u1ED9c h\u1ED9i tho\u1EA1i. C\u1EA7n t\u00E0i kho\u1EA3n Hugging Face mi\u1EC5n ph\u00ED.",
   hfToken: "Hugging Face Token:",
   hfTokenPlaceholder: "hf_...",
@@ -326,6 +353,22 @@ export const vi = {
   diarizeSetupError: "C\u00E0i \u0111\u1EB7t th\u1EA5t b\u1EA1i",
   diarizeSetupHint: "T\u1EA3i v\u00E0 c\u00E0i c\u00E1c th\u00E0nh ph\u1EA7n c\u1EA7n thi\u1EBFt (~3 GB, 5\u201310 ph\u00FAt). Ch\u1EC9 c\u1EA7n l\u00E0m m\u1ED9t l\u1EA7n.",
   errNoDiarizeToken: "Ch\u01B0a c\u1EA5u h\u00ECnh Hugging Face token. V\u00E0o C\u00E0i \u0111\u1EB7t \u0111\u1EC3 nh\u1EADp token.",
+
+  // Startup check
+  startupTitle: "C\u1EA7n c\u00E0i \u0111\u1EB7t",
+  startupDesc: "M\u1ED9t s\u1ED1 th\u00E0nh ph\u1EA7n c\u1EA7n cho phi\u00EAn \u00E2m local ch\u01B0a \u0111\u01B0\u1EE3c c\u00E0i:",
+  startupMissingWhisper: "Whisper ch\u01B0a c\u00E0i",
+  startupMissingWhisperModel: "Ch\u01B0a t\u1EA3i model Whisper",
+  startupMissingDiarize: "Th\u01B0 vi\u1EC7n nh\u1EADn di\u1EC7n ng\u01B0\u1EDDi n\u00F3i ch\u01B0a c\u00E0i",
+  startupMissingOllama: "Ollama ch\u01B0a ch\u1EA1y (c\u1EA7n kh\u1EDFi \u0111\u1ED9ng th\u1EE7 c\u00F4ng)",
+  startupInstall: "C\u00E0i ngay",
+  startupSkip: "\u0110\u1EC3 sau",
+  startupClose: "Xong",
+  startupRetry: "Th\u1EED l\u1EA1i",
+  startupInstalling: "\u0110ang c\u00E0i \u0111\u1EB7t...",
+  startupStepWhisper: "\u0110ang c\u00E0i Whisper & t\u1EA3i model...",
+  startupStepDiarize: "\u0110ang c\u00E0i th\u01B0 vi\u1EC7n nh\u1EADn di\u1EC7n ng\u01B0\u1EDDi n\u00F3i...",
+  startupDone: "C\u00E0i \u0111\u1EB7t ho\u00E0n t\u1EA5t!",
 
   // Settings
   sonioxApiKey: "Soniox API Key:",
@@ -389,14 +432,21 @@ export const vi = {
   overlayTextAlign: "C\u0103n ch\u1EEF:",
   overlayBgColor: "N\u1EC1n:",
   overlayFontFamily: "Font ch\u1EEF:",
-  overlayDisplayMode: "Ch\u1EBF \u0111\u1ED9 hi\u1EC3n th\u1ECB:",
   overlayAlignLeft: "Tr\u00E1i",
   overlayAlignCenter: "Gi\u1EEFa",
   overlayAlignRight: "Ph\u1EA3i",
   overlayBgDark: "T\u1ED1i",
   overlayBgLight: "S\u00E1ng",
-  overlayModeBoth: "T\u1EA1m th\u1EDDi + Ho\u00E0n ch\u1EC9nh",
-  overlayModeFinal: "Ch\u1EC9 ho\u00E0n ch\u1EC9nh",
-  overlayModePartial: "Ch\u1EC9 t\u1EA1m th\u1EDDi",
   overlayMaxLines: "S\u1ED1 d\u00F2ng t\u1ED1i \u0111a:",
+  overlayFinalContent: "K\u1EBFt qu\u1EA3 ho\u00E0n ch\u1EC9nh:",
+  overlayPartialContent: "K\u1EBFt qu\u1EA3 t\u1EE9c th\u1EDDi:",
+  overlayContentOff: "T\u1EAFt",
+  overlayContentTranslated: "Ch\u1EC9 b\u1EA3n d\u1ECBch",
+  overlayContentOriginal: "Ch\u1EC9 v\u0103n b\u1EA3n g\u1ED1c",
+  overlayContentBoth: "C\u1EA3 hai",
+  overlayTranslatedStyle: "V\u0103n b\u1EA3n d\u1ECBch",
+  overlayOriginalStyle: "V\u0103n b\u1EA3n g\u1ED1c",
+  overlayFontSize: "C\u1EE1 ch\u1EEF:",
+  overlayColor: "M\u00E0u:",
+  overlayColorAuto: "T\u1EF1 \u0111\u1ED9ng",
 };

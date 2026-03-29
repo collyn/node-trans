@@ -1,8 +1,8 @@
 /**
  * Whisper Python environment setup.
  *
- * Creates ~/.node-trans/whisper-venv with openai-whisper (if not already
- * available via diarize-venv), then downloads the selected model with
+ * Creates ~/.node-trans/venv with faster-whisper (if not already
+ * available via existing venv), then downloads the selected model with
  * progress reporting.
  *
  * onEvent is called with:
@@ -43,13 +43,13 @@ function execAsync(cmd, args, timeout = 10_000) {
   });
 }
 
-/** Returns the Python bin that already has openai-whisper, or null. (async — non-blocking) */
+/** Returns the Python bin that already has faster-whisper, or null. (async — non-blocking) */
 async function findExistingWhisperPythonAsync() {
   for (const venv of [SHARED_VENV, DIARIZE_VENV, WHISPER_VENV]) {
     const py = venvPython(venv);
     if (existsSync(py)) {
       try {
-        await execAsync(py, ["-c", "import whisper"]);
+        await execAsync(py, ["-c", "import faster_whisper"]);
         return py;
       } catch {}
     }
@@ -63,7 +63,7 @@ function findExistingWhisperPython() {
     const py = venvPython(venv);
     if (existsSync(py)) {
       try {
-        execSync(`"${py}" -c "import whisper"`, { timeout: 10_000, stdio: "ignore" });
+        execSync(`"${py}" -c "import faster_whisper"`, { timeout: 10_000, stdio: "ignore" });
         return py;
       } catch {}
     }
@@ -147,17 +147,38 @@ function spawnLines(cmd, args, onLine, env) {
 }
 
 /**
- * Ensures a Python env with openai-whisper is available.
+ * Ensures a Python env with faster-whisper is available.
  * Returns the path to the Python binary.
+ *
+ * Upgrade-aware: if an existing venv has openai-whisper but not faster-whisper,
+ * installs faster-whisper into the existing venv (preserving torch, pyannote, etc.).
  */
 async function ensureWhisperEnv(onEvent) {
-  // Fast path: environment already has whisper
+  // Fast path: environment already has faster-whisper
   const existing = findExistingWhisperPython();
   if (existing) {
     onEvent({ line: `✓ Using existing Python environment: ${existing}` });
     return existing;
   }
 
+  // Check if an existing venv exists (upgrade from openai-whisper)
+  for (const venv of [SHARED_VENV, DIARIZE_VENV, WHISPER_VENV]) {
+    const py = venvPython(venv);
+    if (existsSync(py)) {
+      onEvent({ line: `Found existing environment: ${venv}` });
+      onEvent({ line: "\n> Installing faster-whisper into existing environment..." });
+      await spawnLines(py, ["-m", "pip", "install", "faster-whisper", "--quiet"],
+        (l) => onEvent({ line: l }));
+
+      onEvent({ line: "\n> Verifying installation..." });
+      await spawnLines(py, ["-c", "import faster_whisper; print('faster-whisper OK')"],
+        (l) => onEvent({ line: l }));
+
+      return py;
+    }
+  }
+
+  // No venv at all — create from scratch
   const sysPy = findSystemPython();
   onEvent({ line: `Using system Python: ${sysPy}` });
 
@@ -179,12 +200,12 @@ async function ensureWhisperEnv(onEvent) {
   await spawnLines(venvPy, ["-m", "pip", "install", "--upgrade", "pip", "--quiet"],
     (l) => onEvent({ line: l }));
 
-  onEvent({ line: "\n> Installing openai-whisper (includes PyTorch — may take 5–15 min)..." });
-  await spawnLines(venvPy, ["-m", "pip", "install", "openai-whisper", "--quiet"],
+  onEvent({ line: "\n> Installing faster-whisper..." });
+  await spawnLines(venvPy, ["-m", "pip", "install", "faster-whisper", "--quiet"],
     (l) => onEvent({ line: l }));
 
   onEvent({ line: "\n> Verifying installation..." });
-  await spawnLines(venvPy, ["-c", "import whisper; print('openai-whisper OK')"],
+  await spawnLines(venvPy, ["-c", "import faster_whisper; print('faster-whisper OK')"],
     (l) => onEvent({ line: l }));
 
   return venvPy;
@@ -261,7 +282,7 @@ export async function runWhisperSetup(modelName, onEvent) {
   await downloadModel(pythonBin, modelName, onEvent);
 }
 
-/** Returns the Python binary that has openai-whisper, or null if not set up. (sync) */
+/** Returns the Python binary that has faster-whisper, or null if not set up. (sync) */
 export function getWhisperPython() {
   return findExistingWhisperPython();
 }
@@ -271,9 +292,13 @@ export async function getWhisperPythonAsync() {
   return findExistingWhisperPythonAsync();
 }
 
-/** Returns true if the model .pt file exists in the whisper cache. */
+/** Returns true if the model exists in the faster-whisper / HuggingFace cache. */
 export function isModelDownloaded(modelName) {
-  const cacheDir = join(os.homedir(), ".cache", "whisper");
-  // openai-whisper stores models as <name>.pt
-  return existsSync(join(cacheDir, `${modelName}.pt`));
+  // faster-whisper stores CTranslate2 models via HuggingFace Hub
+  const hfCacheDir = join(os.homedir(), ".cache", "huggingface", "hub",
+    `models--Systran--faster-whisper-${modelName}`);
+  if (existsSync(hfCacheDir)) return true;
+  // Also check legacy openai-whisper cache for backwards compatibility
+  const legacyDir = join(os.homedir(), ".cache", "whisper");
+  return existsSync(join(legacyDir, `${modelName}.pt`));
 }

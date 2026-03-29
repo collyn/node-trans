@@ -8,6 +8,7 @@ import SettingsModal from "./components/settings/SettingsTab";
 import Sidebar from "./components/Sidebar";
 import OverlayWindow from "./components/live/OverlayWindow";
 import ToastContainer from "./components/Toast";
+import StartupCheck from "./components/StartupCheck";
 
 function AppContent() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -28,6 +29,7 @@ function AppContent() {
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {state.overlayVisible && !window.electronAPI?.isElectron && <OverlayWindow />}
       <ToastContainer />
+      <StartupCheck />
     </>
   );
 }

@@ -132,18 +132,18 @@ export default function Controls() {
 
   const loadingCls = pendingAction ? " btn-loading" : "";
 
-  const sCls = "bg-white/80 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200/50 dark:border-indigo-500/10 px-2 py-1.5 rounded-lg text-xs outline-none cursor-pointer hover:border-gray-300 dark:hover:border-indigo-500/30 transition-colors w-full";
+  const sCls = "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded-lg text-xs outline-none cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-colors w-full";
   const lCls = "text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wider font-medium whitespace-nowrap";
   const arrowCls = "text-gray-300 dark:text-gray-600 text-xs text-center";
 
-  const LangRow = ({ sourceVal, onSource, targetVal, onTarget }) => (
+  const LangRow = ({ sourceVal, onSource, targetVal, onTarget, disabled }) => (
     <>
-      <select className={sCls} value={sourceVal} onChange={onSource}>
+      <select className={sCls} value={sourceVal} onChange={onSource} disabled={disabled}>
         <option value="auto">Auto</option>
         {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
       <span className={arrowCls}>→</span>
-      <select className={sCls} value={targetVal} onChange={onTarget}>
+      <select className={sCls} value={targetVal} onChange={onTarget} disabled={disabled}>
         {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </>
@@ -151,13 +151,13 @@ export default function Controls() {
 
   return (
     <>
-      <div className="mb-2 py-2.5 px-3 bg-white/50 dark:bg-white/3 border border-gray-200/50 dark:border-indigo-500/10 rounded-xl">
+      <div className={`mb-2 py-2.5 px-3 bg-white/50 dark:bg-white/3 border border-gray-200/50 dark:border-indigo-500/10 rounded-xl transition-opacity${isListening ? " opacity-50 pointer-events-none" : ""}`}>
         <div className="grid gap-x-2 gap-y-1.5 items-center" style={{ gridTemplateColumns: "auto 1fr auto 1fr" }}>
 
           {/* Mic row */}
           {audioSource !== "system" && <>
             <span className={lCls}>Mic</span>
-            <LangRow
+            <LangRow disabled={isListening}
               sourceVal={micSourceLang} onSource={(e) => { setMicSourceLang(e.target.value); quickSave({ micWhisperLanguage: e.target.value }); }}
               targetVal={micTargetLang}  onTarget={(e) => { setMicTargetLang(e.target.value); quickSave({ micTargetLanguage: e.target.value, targetLanguage: e.target.value }); }}
             />
@@ -166,7 +166,7 @@ export default function Controls() {
           {/* Sys row */}
           {audioSource !== "mic" && <>
             <span className={lCls}>Sys</span>
-            <LangRow
+            <LangRow disabled={isListening}
               sourceVal={sysSourceLang} onSource={(e) => { setSysSourceLang(e.target.value); quickSave({ systemWhisperLanguage: e.target.value }); }}
               targetVal={sysTargetLang}  onTarget={(e) => { setSysTargetLang(e.target.value); quickSave({ systemTargetLanguage: e.target.value }); }}
             />
@@ -178,12 +178,12 @@ export default function Controls() {
           {/* Context row */}
           <span className={lCls}>{t("context")}</span>
           <div className="col-span-3 flex gap-2">
-            <select className={`${sCls} flex-1`} value={contextPreset} onChange={(e) => setContextPreset(e.target.value)}>
+            <select className={`${sCls} flex-1`} value={contextPreset} onChange={(e) => setContextPreset(e.target.value)} disabled={isListening}>
               {CONTEXT_PRESETS.map((opt) => <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>)}
             </select>
             {contextPreset === "custom" && (
               <input className={`${sCls} flex-[2]`} placeholder={t("contextPlaceholder")}
-                value={customContext} onChange={(e) => setCustomContext(e.target.value)} />
+                value={customContext} onChange={(e) => setCustomContext(e.target.value)} disabled={isListening} />
             )}
           </div>
 

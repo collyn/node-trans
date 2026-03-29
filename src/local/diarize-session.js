@@ -72,8 +72,36 @@ export function createSession({
     context,
   };
 
+  // Translation debouncing for partials (same pattern as whisper-session)
+  let partialDebounceTimer = null;
+  let lastPartialTranslation = "";
+  const PARTIAL_DEBOUNCE_MS = 500;
+
+  async function handlePartial({ text }) {
+    if (!text) return;
+
+    // Emit immediately with last known translation (responsive UI)
+    _onPartial?.({ originalText: text, translatedText: lastPartialTranslation, speaker: null });
+
+    // Debounce the actual translation call
+    clearTimeout(partialDebounceTimer);
+    partialDebounceTimer = setTimeout(async () => {
+      try {
+        const { translated } = await translateText(text, detectedLang, translationSettings);
+        if (translated) {
+          lastPartialTranslation = translated;
+          _onPartial?.({ originalText: text, translatedText: translated, speaker: null });
+        }
+      } catch (err) {
+        log.warn("Partial translation error", err);
+      }
+    }, PARTIAL_DEBOUNCE_MS);
+  }
+
   async function handleUtterance({ text, speaker }) {
     if (!text) return;
+    clearTimeout(partialDebounceTimer);
+    lastPartialTranslation = "";  // Reset for next cycle
     const { translated, lang } = await translateText(text, detectedLang, translationSettings);
     _onUtterance?.({
       originalText: text,
@@ -94,6 +122,11 @@ export function createSession({
       case "ready":
         ready = true;
         log.info("Python worker ready");
+        break;
+      case "partial":
+        handlePartial(msg).catch((err) =>
+          log.warn("Partial handling error", err)
+        );
         break;
       case "utterance":
         handleUtterance(msg).catch((err) =>

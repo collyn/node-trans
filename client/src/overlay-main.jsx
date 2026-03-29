@@ -4,11 +4,16 @@ import ReactDOM from "react-dom/client";
 const DEFAULTS = {
   opacity: 0.8,
   scale: 1,
-  displayMode: "both",
   textAlign: "left",
   bgColor: "dark",
   maxLines: 5,
   fontFamily: "system-ui, sans-serif",
+  finalContent: "both",
+  partialContent: "both",
+  translatedFontSize: 1,
+  translatedColor: "",
+  originalFontSize: 0.8,
+  originalColor: "",
 };
 
 function OverlayApp() {
@@ -63,22 +68,26 @@ function OverlayApp() {
   }, [utterances.length, partials]);
 
   const s = settings;
-  const showFinal = s.displayMode === "both" || s.displayMode === "final-only";
-  const showPartial =
-    s.displayMode === "both" || s.displayMode === "partial-only";
-  const visibleUtterances = showFinal ? utterances.slice(-s.maxLines) : [];
-  const visiblePartials = showPartial
-    ? Object.entries(partials).filter(
-        ([, p]) => p.translatedText || p.originalText
-      )
+  const finalOn = s.finalContent !== "off";
+  const partialOn = s.partialContent !== "off";
+  const finalTranslated = s.finalContent === "translated" || s.finalContent === "both";
+  const finalOriginal = s.finalContent === "original" || s.finalContent === "both";
+  const partialTranslated = s.partialContent === "translated" || s.partialContent === "both";
+  const partialOriginal = s.partialContent === "original" || s.partialContent === "both";
+
+  const visibleUtterances = finalOn ? utterances.slice(-s.maxLines) : [];
+  const visiblePartials = partialOn
+    ? Object.entries(partials).filter(([, p]) => p.translatedText || p.originalText)
     : [];
 
   const isDark = s.bgColor === "dark";
   const bg = isDark
     ? `rgba(0, 0, 0, ${s.opacity})`
     : `rgba(255, 255, 255, ${s.opacity})`;
-  const textColor = isDark ? "#fff" : "#1a1a1a";
+  const defaultTextColor = isDark ? "#fff" : "#1a1a1a";
   const mutedColor = isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.45)";
+  const translatedColor = s.translatedColor || defaultTextColor;
+  const originalColor = s.originalColor || mutedColor;
   const borderColor = isDark
     ? "rgba(255,255,255,0.1)"
     : "rgba(0,0,0,0.1)";
@@ -89,7 +98,7 @@ function OverlayApp() {
         width: "100vw",
         height: "100vh",
         background: bg,
-        color: textColor,
+        color: defaultTextColor,
         fontSize: `${s.scale}rem`,
         fontFamily: s.fontFamily,
         textAlign: s.textAlign,
@@ -156,9 +165,13 @@ function OverlayApp() {
           const original = u.originalText || u.original_text;
           return (
             <div key={i} style={{ marginBottom: 6, lineHeight: 1.5 }}>
-              {translation && <div style={{ fontWeight: 500 }}>{translation}</div>}
-              {original && (
-                <div style={{ fontSize: "0.8em", color: mutedColor }}>
+              {finalTranslated && translation && (
+                <div style={{ fontWeight: 500, color: translatedColor, fontSize: `${s.translatedFontSize}em` }}>
+                  {translation}
+                </div>
+              )}
+              {finalOriginal && original && (
+                <div style={{ fontSize: `${s.originalFontSize}em`, color: originalColor }}>
                   {original}
                 </div>
               )}
@@ -170,19 +183,13 @@ function OverlayApp() {
             key={source}
             style={{ marginBottom: 6, lineHeight: 1.5, opacity: 0.7 }}
           >
-            {data.translatedText && (
-              <div style={{ fontWeight: 500, fontStyle: "italic" }}>
+            {partialTranslated && data.translatedText && (
+              <div style={{ fontWeight: 500, fontStyle: "italic", color: translatedColor, fontSize: `${s.translatedFontSize}em` }}>
                 {data.translatedText}
               </div>
             )}
-            {data.originalText && (
-              <div
-                style={{
-                  fontSize: "0.8em",
-                  color: mutedColor,
-                  fontStyle: "italic",
-                }}
-              >
+            {partialOriginal && data.originalText && (
+              <div style={{ fontSize: `${s.originalFontSize}em`, color: originalColor, fontStyle: "italic" }}>
                 {data.originalText}
               </div>
             )}

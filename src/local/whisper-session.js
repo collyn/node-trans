@@ -5,7 +5,7 @@
  * then streams audio chunks via stdin. Results arrive as newline-delimited
  * JSON on stdout: "partial" for live text, "utterance" for final commits.
  *
- * Requires Python with openai-whisper installed. Reuses the venv created by
+ * Requires Python with faster-whisper installed. Reuses the venv created by
  * Whisper/Diarization setup at ~/.node-trans/venv (or legacy diarize-venv/whisper-venv).
  */
 
@@ -52,7 +52,7 @@ export function createSession({
   let stopped = false;
   let ready = false;
 
-  const translateToEnglish = targetLanguage === "en";
+  const translateToEnglish = targetLanguage === "en" && localTranslationEngine !== "none";
   const detectedLang = whisperLanguage === "auto"
     ? (languageHints[0] || "en")
     : whisperLanguage;
@@ -66,6 +66,13 @@ export function createSession({
     if (translateToEnglish) return { translated: text, lang: "en" };
     return translateText(text, detectedLang, translationSettings);
   }
+
+  // Translation debouncing: avoid calling Ollama on every partial result.
+  // Instead, emit partial immediately with the last known translation,
+  // then debounce the actual translation call.
+  let partialDebounceTimer = null;
+  let lastTranslation = "";
+  const PARTIAL_DEBOUNCE_MS = 500;
 
   function sendToPython(obj) {
     if (!pyProcess || stopped) return;
@@ -88,14 +95,27 @@ export function createSession({
         break;
 
       case "partial": {
-        const { translated } = await getTranslation(msg.text).catch(() => ({ translated: "" }));
-        _onPartial?.({ originalText: msg.text, translatedText: translated, speaker: null });
+        // Emit immediately with last known translation (responsive UI)
+        _onPartial?.({ originalText: msg.text, translatedText: lastTranslation, speaker: null });
+
+        // Debounce the actual translation call to avoid flooding Ollama
+        clearTimeout(partialDebounceTimer);
+        partialDebounceTimer = setTimeout(async () => {
+          const { translated } = await getTranslation(msg.text).catch(() => ({ translated: "" }));
+          if (translated) {
+            lastTranslation = translated;
+            _onPartial?.({ originalText: msg.text, translatedText: translated, speaker: null });
+          }
+        }, PARTIAL_DEBOUNCE_MS);
         break;
       }
 
       case "utterance": {
+        // For final utterances, always translate the full text (no debounce)
+        clearTimeout(partialDebounceTimer);
         const { translated, lang } = await getTranslation(msg.text)
           .catch(() => ({ translated: "", lang: null }));
+        lastTranslation = "";  // Reset for next utterance cycle
         _onUtterance?.({
           originalText: msg.text,
           translatedText: translated,
@@ -131,8 +151,8 @@ export function createSession({
         });
       } catch (err) {
         throw new Error(
-          `Failed to spawn whisper-worker. Ensure openai-whisper is installed ` +
-          `(run the Diarization setup, or: pip install openai-whisper). ` +
+          `Failed to spawn whisper-worker. Ensure faster-whisper is installed ` +
+          `(run the Whisper setup, or: pip install faster-whisper). ` +
           `Detail: ${err.message}`
         );
       }

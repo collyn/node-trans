@@ -16,27 +16,25 @@ Protocol OUT (newline-delimited JSON):
 """
 
 import sys
-import os
 import json
 import base64
-import wave
-import tempfile
 import threading
 import time
 
 import numpy as np
-import whisper
+from faster_whisper import WhisperModel
 
 SAMPLE_RATE = 16000
 BYTES_PER_SAMPLE = 2
 
 # Sliding-window parameters
-WINDOW_SECS = 6.0        # inference window length
-STRIDE_SECS = 4.0        # advance per window; keeps 2 s overlap for context
+WINDOW_SECS = 4.0        # inference window length (reduced from 6s for faster first result)
+STRIDE_SECS = 2.5        # advance per window; keeps 1.5 s overlap for context
 MIN_FLUSH_SECS = 1.0     # minimum audio required for a forced flush
 SILENCE_RMS = 300        # RMS below this is considered silence
 SILENCE_FLUSH_SECS = 1.5 # flush window early after this much silence
 UTTERANCE_SILENCE = 2    # consecutive empty windows → emit utterance
+MAX_ACCUM_CHARS  = 200   # emit utterance when accumulated text exceeds this length
 
 
 def emit(obj):
@@ -51,19 +49,24 @@ def pcm_rms(data):
     return float(np.sqrt(np.mean(s * s)))
 
 
-def write_wav(pcm, path):
-    with wave.open(path, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(pcm)
+def detect_device():
+    """Auto-detect best device for CTranslate2 inference."""
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda", "float16"
+    except ImportError:
+        pass
+    return "cpu", "int8"
 
 
 class WhisperWorker:
-    def __init__(self, model_name, language, translate):
+    def __init__(self, model_name, language, translate, device, compute_type):
         self.model_name = model_name
         self.language = language    # None = auto-detect
         self.translate = translate  # True → task="translate" (force output to English)
+        self.device = device
+        self.compute_type = compute_type
 
         self.buf = bytearray()
         self.window_start = 0.0    # absolute time (s) of buf[0]
@@ -75,9 +78,14 @@ class WhisperWorker:
         self.lock = threading.Lock()
 
     def load(self):
-        print(f"[whisper-worker] Loading model '{self.model_name}'…",
+        print(f"[whisper-worker] Loading model '{self.model_name}' "
+              f"(device={self.device}, compute_type={self.compute_type})…",
               file=sys.stderr, flush=True)
-        self.model = whisper.load_model(self.model_name, device="cpu")
+        self.model = WhisperModel(
+            self.model_name,
+            device=self.device,
+            compute_type=self.compute_type,
+        )
         emit({"type": "ready"})
 
     def add_audio(self, pcm):
@@ -137,24 +145,27 @@ class WhisperWorker:
             self.accum = ""
 
     def _run(self, pcm, t0, force_utterance):
-        path = None
         try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                path = f.name
-            write_wav(pcm, path)
+            # Convert PCM s16le to float32 array (faster-whisper accepts numpy directly)
+            pcm_f32 = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
 
-            opts = {"verbose": False}
-            if self.language:
-                opts["language"] = self.language
-            if self.translate:
-                opts["task"] = "translate"
+            task = "translate" if self.translate else "transcribe"
+            segments, _info = self.model.transcribe(
+                pcm_f32,
+                language=self.language,
+                task=task,
+                beam_size=1,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+                condition_on_previous_text=False,
+                no_speech_threshold=0.6,
+            )
 
-            result = self.model.transcribe(path, **opts)
             texts = []
-            for seg in result.get("segments", []):
-                abs_start = t0 + float(seg["start"])
-                abs_end   = t0 + float(seg["end"])
-                text = seg["text"].strip()
+            for seg in segments:
+                abs_start = t0 + seg.start
+                abs_end   = t0 + seg.end
+                text = seg.text.strip()
 
                 if not text:
                     continue
@@ -172,7 +183,7 @@ class WhisperWorker:
             else:
                 self.empty_windows += 1
 
-            if (force_utterance or self.empty_windows >= UTTERANCE_SILENCE) and self.accum:
+            if self.accum and (force_utterance or self.empty_windows >= UTTERANCE_SILENCE or len(self.accum) >= MAX_ACCUM_CHARS):
                 emit({"type": "utterance", "text": self.accum})
                 self.accum = ""
                 self.empty_windows = 0
@@ -180,11 +191,6 @@ class WhisperWorker:
         except Exception as e:
             emit({"type": "error", "message": str(e)})
         finally:
-            if path:
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
             with self.lock:
                 self.processing = False
 
@@ -194,6 +200,8 @@ def main():
     model_name = "base"
     language = None
     translate = False
+    device = None
+    compute_type = None
 
     i = 0
     while i < len(args):
@@ -207,10 +215,22 @@ def main():
         elif args[i] == "--translate":
             translate = True
             i += 1
+        elif args[i] == "--device" and i + 1 < len(args):
+            device = args[i + 1]
+            i += 2
+        elif args[i] == "--compute-type" and i + 1 < len(args):
+            compute_type = args[i + 1]
+            i += 2
         else:
             i += 1
 
-    worker = WhisperWorker(model_name, language, translate)
+    # Auto-detect device if not specified
+    if device is None or compute_type is None:
+        auto_device, auto_ct = detect_device()
+        device = device or auto_device
+        compute_type = compute_type or auto_ct
+
+    worker = WhisperWorker(model_name, language, translate, device, compute_type)
     worker.load()
 
     for line in sys.stdin:

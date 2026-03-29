@@ -32,10 +32,16 @@ const DEFAULTS = {
   overlay: {
     opacity: 0.8,
     scale: 1,
-    displayMode: "both",
     textAlign: "left",
     bgColor: "dark",
     maxLines: 5,
+    fontFamily: "system-ui, sans-serif",
+    finalContent: "both",
+    partialContent: "both",
+    translatedFontSize: 1,
+    translatedColor: "",
+    originalFontSize: 0.8,
+    originalColor: "",
   },
 };
 
@@ -43,7 +49,7 @@ export function loadSettings() {
   try {
     if (fs.existsSync(SETTINGS_FILE)) {
       const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
-      return { ...DEFAULTS, ...data };
+      return { ...DEFAULTS, ...data, overlay: { ...DEFAULTS.overlay, ...(data.overlay || {}) } };
     }
   } catch {
     // Corrupt file — fall back to defaults

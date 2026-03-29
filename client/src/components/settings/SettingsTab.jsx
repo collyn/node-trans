@@ -6,7 +6,7 @@ import { useI18n } from "../../i18n/I18nContext";
 import OverlaySettings from "./OverlaySettings";
 import { ConfirmDialog } from "../Modal";
 
-const selectCls = "bg-white/80 dark:bg-white/5 text-gray-700 dark:text-gray-300 border border-gray-200/50 dark:border-indigo-500/10 px-3 py-2 rounded-xl w-full text-sm outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 hover:border-gray-300 dark:hover:border-indigo-500/20";
+const selectCls = "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 px-3 py-2 rounded-xl w-full text-sm outline-none transition-all duration-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 hover:border-indigo-400 dark:hover:border-indigo-400";
 const labelCls = "block text-xs text-gray-400 dark:text-gray-600 mb-1.5 font-medium uppercase tracking-wider";
 const hintCls = "text-xs text-gray-400 dark:text-gray-600 mt-1";
 const dividerCls = "border-gray-200/50 dark:border-indigo-500/10";
@@ -36,6 +36,7 @@ export default function SettingsModal({ onClose }) {
   const [whisperModel, setWhisperModel] = useState("base");
   const [localTranslationEngine, setLocalTranslationEngine] = useState("none");
   const [ollamaModel, setOllamaModel] = useState("llama3.2");
+  const [enableDiarization, setEnableDiarization] = useState(false);
   const [hfToken, setHfToken] = useState("");
   const [whisperStatus, setWhisperStatus] = useState(null);
   const [checkingWhisper, setCheckingWhisper] = useState(false);
@@ -80,6 +81,7 @@ export default function SettingsModal({ onClose }) {
       setLocalTranslationEngine(settings.localTranslationEngine || "none");
       const savedModel = settings.ollamaModel || "llama3.2";
       setOllamaModel(OLLAMA_MODEL_OPTIONS.find((o) => o.value === savedModel) ? savedModel : "llama3.2");
+      setEnableDiarization(!!settings.enableDiarization);
       setHfToken(settings.hfToken || "");
       setDefaultContext(settings.defaultContext || "none");
       setDefaultCustomContext(settings.defaultCustomContext || "");
@@ -239,12 +241,12 @@ export default function SettingsModal({ onClose }) {
         whisperModel,
         localTranslationEngine,
         ollamaModel,
+        enableDiarization,
         hfToken: hfToken || null,
         defaultContext,
         defaultCustomContext: defaultCustomContext || "",
       });
       dispatch({ type: "TOAST", payload: { message: t("saved"), type: "success" } });
-      setTimeout(() => dispatch({ type: "TOAST", payload: { message: t("connected"), type: "" } }), 2000);
     } catch {
       dispatch({ type: "TOAST", payload: { message: t("saveFailed"), type: "error" } });
     }
@@ -555,53 +557,81 @@ export default function SettingsModal({ onClose }) {
                   <div>
                     <p className={sectionTitleCls}>{t("sectionTranslation")}</p>
                     <div className="space-y-3">
-                      <div>
-                        <label className={labelCls}>{t("localTranslationEngine")}</label>
-                        <select
-                          className={`${selectCls} max-w-xs`}
-                          value={localTranslationEngine}
-                          onChange={(e) => {
-                            setLocalTranslationEngine(e.target.value);
-                            if (e.target.value === "ollama") fetchOllamaStatus();
-                            else if (e.target.value === "libretranslate") fetchLibreStatus();
-                          }}
+
+                      {/* Toggle */}
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={localTranslationEngine !== "none"}
+                          onClick={() => setLocalTranslationEngine(localTranslationEngine === "none" ? "ollama" : "none")}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                            localTranslationEngine !== "none"
+                              ? "bg-indigo-500"
+                              : "bg-gray-300 dark:bg-white/10"
+                          }`}
                         >
-                          <option value="none">{t("none")}</option>
-                          <option value="ollama">Ollama</option>
-                          <option value="libretranslate">LibreTranslate</option>
-                        </select>
-                        {checkingOllama || checkingLibre ? (
-                          <p className="text-xs font-medium mt-1 text-gray-400 dark:text-gray-500 animate-pulse">⟳ Checking...</p>
-                        ) : (<>
-                          {ollamaStatus && localTranslationEngine === "ollama" && (
-                            <p className={`text-xs font-medium mt-1 ${ollamaStatus.ollamaAvailable ? "text-green-500" : "text-amber-500"}`}>
-                              {ollamaStatus.ollamaAvailable ? "✓ " : "○ "}{ollamaStatus.ollamaAvailable ? t("ollamaRunning") : t(ollamaStatus.platform === "win32" ? "ollamaNotRunningWin" : "ollamaNotRunning")}
-                            </p>
-                          )}
-                          {libreStatus && localTranslationEngine === "libretranslate" && (
-                            <p className={`text-xs font-medium mt-1 ${libreStatus.libreTranslateAvailable ? "text-green-500" : "text-amber-500"}`}>
-                              {libreStatus.libreTranslateAvailable ? "✓ " : "○ "}{libreStatus.libreTranslateAvailable ? t("libreTranslateOnline") : t("libreTranslateOffline")}
-                            </p>
-                          )}
-                        </>)}
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                              localTranslationEngine !== "none" ? "translate-x-5" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                          {t("enableTranslation")}
+                        </span>
                       </div>
-                      {localTranslationEngine === "ollama" && (
-                        <div>
-                          <label className={labelCls}>{t("ollamaModel")}</label>
-                          <select className={`${selectCls} max-w-xs`} value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); fetchOllamaStatus(e.target.value); }}>
-                            {OLLAMA_MODEL_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                          </select>
-                          <p className={hintCls}>{OLLAMA_MODEL_OPTIONS.find((o) => o.value === ollamaModel)?.[lang] ?? ""}</p>
-                          {checkingOllama ? (
-                            <p className="text-xs font-medium mt-1 text-gray-400 dark:text-gray-500 animate-pulse">⟳ Checking...</p>
-                          ) : ollamaStatus && ollamaStatus.ollamaAvailable && (
-                            <p className={`text-xs font-medium mt-1 ${ollamaStatus.ollamaModelReady ? "text-green-500" : "text-amber-500"}`}>
-                              {ollamaStatus.ollamaModelReady ? "✓ " : "○ "}{ollamaStatus.ollamaModelReady ? t("ollamaModelReady") : t("ollamaModelMissing", { model: ollamaModel })}
-                            </p>
+
+                      {localTranslationEngine !== "none" && (
+                        <>
+                          <div>
+                            <label className={labelCls}>{t("localTranslationEngine")}</label>
+                            <select
+                              className={`${selectCls} max-w-xs`}
+                              value={localTranslationEngine}
+                              onChange={(e) => {
+                                setLocalTranslationEngine(e.target.value);
+                                if (e.target.value === "ollama") fetchOllamaStatus();
+                                else if (e.target.value === "libretranslate") fetchLibreStatus();
+                              }}
+                            >
+                              <option value="ollama">Ollama</option>
+                              <option value="libretranslate">LibreTranslate</option>
+                            </select>
+                            {checkingOllama || checkingLibre ? (
+                              <p className="text-xs font-medium mt-1 text-gray-400 dark:text-gray-500 animate-pulse">⟳ Checking...</p>
+                            ) : (<>
+                              {ollamaStatus && localTranslationEngine === "ollama" && (
+                                <p className={`text-xs font-medium mt-1 ${ollamaStatus.ollamaAvailable ? "text-green-500" : "text-amber-500"}`}>
+                                  {ollamaStatus.ollamaAvailable ? "✓ " : "○ "}{ollamaStatus.ollamaAvailable ? t("ollamaRunning") : t(ollamaStatus.platform === "win32" ? "ollamaNotRunningWin" : "ollamaNotRunning")}
+                                </p>
+                              )}
+                              {libreStatus && localTranslationEngine === "libretranslate" && (
+                                <p className={`text-xs font-medium mt-1 ${libreStatus.libreTranslateAvailable ? "text-green-500" : "text-amber-500"}`}>
+                                  {libreStatus.libreTranslateAvailable ? "✓ " : "○ "}{libreStatus.libreTranslateAvailable ? t("libreTranslateOnline") : t("libreTranslateOffline")}
+                                </p>
+                              )}
+                            </>)}
+                          </div>
+                          {localTranslationEngine === "ollama" && (
+                            <div>
+                              <label className={labelCls}>{t("ollamaModel")}</label>
+                              <select className={`${selectCls} max-w-xs`} value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); fetchOllamaStatus(e.target.value); }}>
+                                {OLLAMA_MODEL_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </select>
+                              <p className={hintCls}>{OLLAMA_MODEL_OPTIONS.find((o) => o.value === ollamaModel)?.[lang] ?? ""}</p>
+                              {checkingOllama ? (
+                                <p className="text-xs font-medium mt-1 text-gray-400 dark:text-gray-500 animate-pulse">⟳ Checking...</p>
+                              ) : ollamaStatus && ollamaStatus.ollamaAvailable && (
+                                <p className={`text-xs font-medium mt-1 ${ollamaStatus.ollamaModelReady ? "text-green-500" : "text-amber-500"}`}>
+                                  {ollamaStatus.ollamaModelReady ? "✓ " : "○ "}{ollamaStatus.ollamaModelReady ? t("ollamaModelReady") : t("ollamaModelMissing", { model: ollamaModel })}
+                                </p>
+                              )}
+                            </div>
                           )}
-                        </div>
+                        </>
                       )}
                     </div>
                   </div>
@@ -613,59 +643,86 @@ export default function SettingsModal({ onClose }) {
                     <p className={sectionTitleCls}>{t("sectionDiarization")}</p>
                     <div className="space-y-3">
                       <p className={hintCls}>{t("diarizationHint")}</p>
-                      <div>
-                        <label className={labelCls}>{t("hfToken")}</label>
-                        <input
-                          type="password"
-                          className={selectCls}
-                          value={hfToken}
-                          onChange={(e) => setHfToken(e.target.value)}
-                          placeholder={t("hfTokenPlaceholder")}
-                        />
-                        <p className={hintCls}>
-                          {t("hfTokenHint")}{" "}
-                          <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
-                            huggingface.co/settings/tokens
-                          </a>
-                          {". "}
-                          {t("hfTokenModelAccess")}{" "}
-                          <a href="https://huggingface.co/pyannote/speaker-diarization-3.1" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
-                            pyannote/speaker-diarization-3.1
-                          </a>
-                        </p>
-                        {checkingDiarize ? (
-                          <p className="text-xs mt-1.5 font-medium text-gray-400 dark:text-gray-500 animate-pulse">⟳ Checking...</p>
-                        ) : diarizeStatus && (
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <p className={`text-xs font-medium ${diarizeStatus.diarizePyReady ? "text-green-500" : "text-amber-500"}`}>
-                              {diarizeStatus.diarizePyReady ? "✓ " : "○ "}{diarizeStatus.diarizePyReady ? t("diarizePyReady") : t("diarizePyMissing")}
-                            </p>
-                            {!diarizeStatus.diarizePyReady && !setupRunning && (
-                              <button onClick={startSetup} className="cursor-pointer text-xs text-indigo-400 hover:text-indigo-500 hover:underline transition-colors">
-                                {t("diarizeSetup")}
-                              </button>
-                            )}
-                          </div>
-                        )}
 
-                        {setupRunning && (
-                          <div className="mt-2 space-y-1">
-                            <p className="text-xs text-gray-400 dark:text-gray-500 animate-pulse">Installing…</p>
-                            <div className="w-full bg-gray-200/60 dark:bg-white/10 rounded-full h-2 overflow-hidden">
-                              <div className="h-2 w-full rounded-full bg-linear-to-r from-indigo-500 to-cyan-400 animate-pulse" />
-                            </div>
-                          </div>
-                        )}
-
-                        {setupError && (
-                          <div className="text-xs mt-1.5 text-red-400 space-y-0.5">
-                            <p>{t("diarizeSetupError")}: {setupError}</p>
-                            {setupLogFile && (
-                              <p className="text-gray-400 dark:text-gray-500">Log: {setupLogFile}</p>
-                            )}
-                          </div>
-                        )}
+                      {/* Toggle */}
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={enableDiarization}
+                          onClick={() => setEnableDiarization(!enableDiarization)}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+                            enableDiarization
+                              ? "bg-indigo-500"
+                              : "bg-gray-300 dark:bg-white/10"
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                              enableDiarization ? "translate-x-5" : "translate-x-0"
+                            }`}
+                          />
+                        </button>
+                        <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                          {t("enableDiarization")}
+                        </span>
                       </div>
+
+                      {enableDiarization && (
+                        <div>
+                          <label className={labelCls}>{t("hfToken")}</label>
+                          <input
+                            type="password"
+                            className={selectCls}
+                            value={hfToken}
+                            onChange={(e) => setHfToken(e.target.value)}
+                            placeholder={t("hfTokenPlaceholder")}
+                          />
+                          <p className={hintCls}>
+                            {t("hfTokenHint")}{" "}
+                            <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
+                              huggingface.co/settings/tokens
+                            </a>
+                            {". "}
+                            {t("hfTokenModelAccess")}{" "}
+                            <a href="https://huggingface.co/pyannote/speaker-diarization-3.1" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
+                              pyannote/speaker-diarization-3.1
+                            </a>
+                          </p>
+                          {checkingDiarize ? (
+                            <p className="text-xs mt-1.5 font-medium text-gray-400 dark:text-gray-500 animate-pulse">⟳ Checking...</p>
+                          ) : diarizeStatus && (
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <p className={`text-xs font-medium ${diarizeStatus.diarizePyReady ? "text-green-500" : "text-amber-500"}`}>
+                                {diarizeStatus.diarizePyReady ? "✓ " : "○ "}{diarizeStatus.diarizePyReady ? t("diarizePyReady") : t("diarizePyMissing")}
+                              </p>
+                              {!diarizeStatus.diarizePyReady && !setupRunning && (
+                                <button onClick={startSetup} className="cursor-pointer text-xs text-indigo-400 hover:text-indigo-500 hover:underline transition-colors">
+                                  {t("diarizeSetup")}
+                                </button>
+                              )}
+                            </div>
+                          )}
+
+                          {setupRunning && (
+                            <div className="mt-2 space-y-1">
+                              <p className="text-xs text-gray-400 dark:text-gray-500 animate-pulse">Installing…</p>
+                              <div className="w-full bg-gray-200/60 dark:bg-white/10 rounded-full h-2 overflow-hidden">
+                                <div className="h-2 w-full rounded-full bg-linear-to-r from-indigo-500 to-cyan-400 animate-pulse" />
+                              </div>
+                            </div>
+                          )}
+
+                          {setupError && (
+                            <div className="text-xs mt-1.5 text-red-400 space-y-0.5">
+                              <p>{t("diarizeSetupError")}: {setupError}</p>
+                              {setupLogFile && (
+                                <p className="text-gray-400 dark:text-gray-500">Log: {setupLogFile}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>

@@ -79,10 +79,11 @@ async function checkDiarizeStatus() {
       "import torchaudio",
       "hasattr(torchaudio,'set_audio_backend') or setattr(torchaudio,'set_audio_backend',lambda *a,**kw:None)",
       "hasattr(torchaudio,'get_audio_backend') or setattr(torchaudio,'get_audio_backend',lambda:'soundfile')",
+      "hasattr(torchaudio,'list_audio_backends') or setattr(torchaudio,'list_audio_backends',lambda:['soundfile'])",
       "import numpy as np",
       "hasattr(np,'NaN') or setattr(np,'NaN',np.nan)",
       "hasattr(np,'NAN') or setattr(np,'NAN',np.nan)",
-      "import torch, whisper, pyannote.audio",
+      "import torch, faster_whisper, pyannote.audio",
     ].join("; ");
     await new Promise((resolve) => {
       exec(`"${pythonBin}" -c "${verifyScript}"`, { timeout: 15000 }, (err) => {

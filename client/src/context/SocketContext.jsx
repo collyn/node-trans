@@ -7,11 +7,16 @@ const SocketContext = createContext(null);
 const OVERLAY_DEFAULTS = {
   opacity: 0.8,
   scale: 1,
-  displayMode: "both",
   textAlign: "left",
   bgColor: "dark",
   maxLines: 5,
   fontFamily: "system-ui, sans-serif",
+  finalContent: "both",
+  partialContent: "both",
+  translatedFontSize: 1,
+  translatedColor: "",
+  originalFontSize: 0.8,
+  originalColor: "",
 };
 
 function loadOverlaySettings() {
@@ -173,6 +178,7 @@ function reducer(state, action) {
         ...state,
         isListening: false,
         isPaused: false,
+        pendingAction: false,
         statusKey: "disconnected",
         statusClass: "error",
         listeningSince: null,
@@ -263,6 +269,11 @@ export function SocketProvider({ children }) {
     socket.on("connect", () => dispatch({ type: "CONNECTED" }));
     socket.on("disconnect", () => dispatch({ type: "DISCONNECTED" }));
 
+    // If socket connected before useEffect ran (fast localhost), catch up
+    if (socket.connected) {
+      dispatch({ type: "CONNECTED" });
+    }
+
     // Listen for overlay closed from Electron
     if (window.electronAPI?.onOverlayClosed) {
       window.electronAPI.onOverlayClosed(() => dispatch({ type: "OVERLAY_CLOSED" }));
@@ -280,7 +291,8 @@ export function SocketProvider({ children }) {
 
     return () => {
       socket.off();
-      socket.disconnect();
+      // Don't disconnect — socket is shared via useMemo and must survive
+      // React StrictMode's effect cleanup/re-run cycle.
     };
   }, [socket]);
 

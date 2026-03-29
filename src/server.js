@@ -204,7 +204,7 @@ io.on("connection", (socket) => {
       }
 
       const sttMode = engine === "local-whisper"
-        ? (settings.hfToken ? "diarize" : "whisper")
+        ? (settings.enableDiarization && settings.hfToken ? "diarize" : "whisper")
         : "soniox";
       log.info("Session starting", {
         socketId: socket.id,
@@ -258,7 +258,7 @@ io.on("connection", (socket) => {
             libreTranslateUrl: settings.libreTranslateUrl,
             context: sessionContext,
           };
-          if (settings.hfToken) {
+          if (settings.enableDiarization && settings.hfToken) {
             const createDiarizeSession = await getDiarizeSession();
             stt = createDiarizeSession({ ...sessionOpts, hfToken: settings.hfToken });
           } else {

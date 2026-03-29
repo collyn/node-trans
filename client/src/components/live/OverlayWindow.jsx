@@ -11,12 +11,16 @@ export default function OverlayWindow() {
   });
   const scrollRef = useRef(null);
 
-  const partialEntries = Object.entries(partialResults);
-  const showFinal = s.displayMode === "both" || s.displayMode === "final-only";
-  const showPartial = s.displayMode === "both" || s.displayMode === "partial-only";
+  const finalOn = s.finalContent !== "off";
+  const partialOn = s.partialContent !== "off";
+  const finalTranslated = s.finalContent === "translated" || s.finalContent === "both";
+  const finalOriginal = s.finalContent === "original" || s.finalContent === "both";
+  const partialTranslated = s.partialContent === "translated" || s.partialContent === "both";
+  const partialOriginal = s.partialContent === "original" || s.partialContent === "both";
 
-  const visibleUtterances = showFinal ? utterances.slice(-s.maxLines) : [];
-  const visiblePartials = showPartial ? partialEntries.filter(([, p]) => p.translatedText || p.originalText) : [];
+  const partialEntries = Object.entries(partialResults);
+  const visibleUtterances = finalOn ? utterances.slice(-s.maxLines) : [];
+  const visiblePartials = partialOn ? partialEntries.filter(([, p]) => p.translatedText || p.originalText) : [];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -28,8 +32,10 @@ export default function OverlayWindow() {
   const bg = isDark
     ? `rgba(0, 0, 0, ${s.opacity})`
     : `rgba(255, 255, 255, ${s.opacity})`;
-  const textColor = isDark ? "#fff" : "#1a1a1a";
+  const defaultTextColor = isDark ? "#fff" : "#1a1a1a";
   const mutedColor = isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.45)";
+  const translatedColor = s.translatedColor || defaultTextColor;
+  const originalColor = s.originalColor || mutedColor;
 
   return (
     <div
@@ -42,7 +48,7 @@ export default function OverlayWindow() {
         width: 500,
         maxWidth: "90vw",
         background: bg,
-        color: textColor,
+        color: defaultTextColor,
         backdropFilter: "blur(12px)",
         borderRadius: 14,
         border: isDark ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.1)",
@@ -110,22 +116,28 @@ export default function OverlayWindow() {
           const original = u.originalText || u.original_text;
           return (
             <div key={i} style={{ marginBottom: 6, lineHeight: 1.5 }}>
-              {translation && (
-                <div style={{ fontWeight: 500 }}>{translation}</div>
+              {finalTranslated && translation && (
+                <div style={{ fontWeight: 500, color: translatedColor, fontSize: `${s.translatedFontSize}em` }}>
+                  {translation}
+                </div>
               )}
-              {original && (
-                <div style={{ fontSize: "0.8em", color: mutedColor }}>{original}</div>
+              {finalOriginal && original && (
+                <div style={{ fontSize: `${s.originalFontSize}em`, color: originalColor }}>
+                  {original}
+                </div>
               )}
             </div>
           );
         })}
         {visiblePartials.map(([source, data]) => (
           <div key={source} style={{ marginBottom: 6, lineHeight: 1.5, opacity: 0.7 }}>
-            {data.translatedText && (
-              <div style={{ fontWeight: 500, fontStyle: "italic" }}>{data.translatedText}</div>
+            {partialTranslated && data.translatedText && (
+              <div style={{ fontWeight: 500, fontStyle: "italic", color: translatedColor, fontSize: `${s.translatedFontSize}em` }}>
+                {data.translatedText}
+              </div>
             )}
-            {data.originalText && (
-              <div style={{ fontSize: "0.8em", color: mutedColor, fontStyle: "italic" }}>
+            {partialOriginal && data.originalText && (
+              <div style={{ fontSize: `${s.originalFontSize}em`, color: originalColor, fontStyle: "italic" }}>
                 {data.originalText}
               </div>
             )}
