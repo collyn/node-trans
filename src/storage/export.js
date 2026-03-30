@@ -24,9 +24,11 @@ export function exportSessionToMarkdown(sessionId) {
 
   md += `\n---\n\n## Nội dung\n\n`;
 
+  const speakerIds = [...new Set(utterances.map(u => u.speaker).filter(Boolean))];
+
   for (const u of utterances) {
     const time = formatTime(new Date(u.timestamp + "Z"));
-    const speaker = u.speaker ? (aliases[u.speaker] || `Speaker ${u.speaker}`) : "Speaker";
+    const speaker = u.speaker ? (aliases[u.speaker] || `Speaker ${speakerIds.indexOf(u.speaker) + 1}`) : "Speaker";
     const lang = u.original_language ? ` (${u.original_language})` : "";
 
     md += `**[${time}] ${speaker}**${lang}:  \n`;

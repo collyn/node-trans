@@ -2,26 +2,26 @@ import { Router } from "express";
 import { existsSync, unlinkSync } from "fs";
 import { join } from "path";
 import { fileURLToPath } from "url";
-import { exec } from "child_process";
+import { spawn } from "child_process";
 import { loadSettings, saveSettings } from "../storage/settings.js";
 import { createLogger } from "../logger.js";
 const log = createLogger("api");
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
-// Lazy-loaded modules
-let _devices, _history, _export;
-async function lazyDevices() {
-  if (!_devices) _devices = await import("../audio/devices.js");
-  return _devices;
+// Lazy-loaded modules — cache the Promise itself so concurrent callers share one load
+let _devicesP, _historyP, _exportP;
+function lazyDevices() {
+  if (!_devicesP) _devicesP = import("../audio/devices.js");
+  return _devicesP;
 }
-async function lazyHistory() {
-  if (!_history) _history = await import("../storage/history.js");
-  return _history;
+function lazyHistory() {
+  if (!_historyP) _historyP = import("../storage/history.js");
+  return _historyP;
 }
-async function lazyExport() {
-  if (!_export) _export = await import("../storage/export.js");
-  return _export;
+function lazyExport() {
+  if (!_exportP) _exportP = import("../storage/export.js");
+  return _exportP;
 }
 
 // ── Status check helpers (each runs independently) ──────────────────────────
@@ -86,10 +86,10 @@ async function checkDiarizeStatus() {
       "import torch, faster_whisper, pyannote.audio",
     ].join("; ");
     await new Promise((resolve) => {
-      exec(`"${pythonBin}" -c "${verifyScript}"`, { timeout: 15000 }, (err) => {
-        diarizePyReady = !err;
-        resolve();
-      });
+      const proc = spawn(pythonBin, ["-c", verifyScript], { stdio: "ignore" });
+      const timer = setTimeout(() => { proc.kill(); resolve(); }, 15000);
+      proc.on("close", (code) => { clearTimeout(timer); diarizePyReady = code === 0; resolve(); });
+      proc.on("error", () => { clearTimeout(timer); resolve(); });
     });
   } catch {}
   return { diarizePyReady };
@@ -102,6 +102,16 @@ const router = Router();
 // Disable caching for all API responses
 router.use((req, res, next) => {
   res.set("Cache-Control", "no-store");
+  next();
+});
+
+// Validate :id param is a positive integer
+router.param("id", (req, res, next, val) => {
+  const id = Number(val);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: "Invalid session ID" });
+  }
+  req.params.id = id;
   next();
 });
 

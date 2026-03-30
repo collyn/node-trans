@@ -56,6 +56,7 @@ export function createSession({
   let stdoutBuf = "";
   let stopped = false;
   let ready = false;
+  let readyResolve = null;
   let fallbackSession = null;
   let useFallback = false;
 
@@ -121,6 +122,8 @@ export function createSession({
     switch (msg.type) {
       case "ready":
         ready = true;
+        readyResolve?.();
+        readyResolve = null;
         log.info("Python worker ready");
         break;
       case "partial":
@@ -142,6 +145,8 @@ export function createSession({
 
   async function activateFallback() {
     if (useFallback) return;
+    readyResolve?.();
+    readyResolve = null;
     log.warn("Activating fallback (whisper, no speaker labels)");
     useFallback = true;
     fallbackSession = createWhisperSession({
@@ -228,14 +233,11 @@ export function createSession({
           }
           resolve();
         }, READY_TIMEOUT_MS);
-
-        const poll = setInterval(() => {
-          if (ready || useFallback) {
-            clearInterval(poll);
-            clearTimeout(timeout);
-            resolve();
-          }
-        }, 200);
+        readyResolve = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        if (ready || useFallback) readyResolve();
       });
     },
 

@@ -29,47 +29,32 @@ if (process.env.FFMPEG_PATH) {
   process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
 }
 
-// Lazy-loaded modules (deferred to first use for faster startup)
-let _history, _createSonioxSession, _createWhisperSession, _createDiarizeSession, _startCapture, _listInputDevices;
+// Lazy-loaded modules — cache the Promise itself so concurrent callers share one load
+let _historyP, _sonioxP, _captureP, _whisperP, _diarizeP, _devicesP;
 
-async function getHistory() {
-  if (!_history) _history = await import("./storage/history.js");
-  return _history;
+function getHistory() {
+  if (!_historyP) _historyP = import("./storage/history.js");
+  return _historyP;
 }
-async function getSonioxSession() {
-  if (!_createSonioxSession) {
-    const mod = await import("./soniox/session.js");
-    _createSonioxSession = mod.createSession;
-  }
-  return _createSonioxSession;
+function getSonioxSession() {
+  if (!_sonioxP) _sonioxP = import("./soniox/session.js").then((m) => m.createSession);
+  return _sonioxP;
 }
-async function getCapture() {
-  if (!_startCapture) {
-    const mod = await import("./audio/capture.js");
-    _startCapture = mod.startCapture;
-  }
-  return _startCapture;
+function getCapture() {
+  if (!_captureP) _captureP = import("./audio/capture.js").then((m) => m.startCapture);
+  return _captureP;
 }
-async function getWhisperSession() {
-  if (!_createWhisperSession) {
-    const mod = await import("./local/whisper-session.js");
-    _createWhisperSession = mod.createSession;
-  }
-  return _createWhisperSession;
+function getWhisperSession() {
+  if (!_whisperP) _whisperP = import("./local/whisper-session.js").then((m) => m.createSession);
+  return _whisperP;
 }
-async function getDiarizeSession() {
-  if (!_createDiarizeSession) {
-    const mod = await import("./local/diarize-session.js");
-    _createDiarizeSession = mod.createSession;
-  }
-  return _createDiarizeSession;
+function getDiarizeSession() {
+  if (!_diarizeP) _diarizeP = import("./local/diarize-session.js").then((m) => m.createSession);
+  return _diarizeP;
 }
-async function getDevices() {
-  if (!_listInputDevices) {
-    const mod = await import("./audio/devices.js");
-    _listInputDevices = mod.listInputDevices;
-  }
-  return _listInputDevices;
+function getDevices() {
+  if (!_devicesP) _devicesP = import("./audio/devices.js").then((m) => m.listInputDevices);
+  return _devicesP;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,13 +87,13 @@ io.on("connection", (socket) => {
   log.info("Client connected", { socketId: socket.id });
 
   socket.on("start-listening", async (opts) => {
-    // Clean up any existing session
-    await stopSession(socket.id);
+    // Fire-and-forget cleanup of any existing session (captures are stopped synchronously)
+    stopSession(socket.id).catch(() => {});
 
     try {
-      const history = await getHistory();
-      const startCapture = await getCapture();
-      const listInputDevices = await getDevices();
+      const [history, startCapture, listInputDevices] = await Promise.all([
+        getHistory(), getCapture(), getDevices(),
+      ]);
 
       const settings = loadSettings();
       const engine = settings.transcriptionEngine || "soniox";
@@ -154,6 +139,15 @@ io.on("connection", (socket) => {
       }
 
       const languageHints = settings.languageHints || ["en"];
+
+      const sttMode = engine === "local-whisper"
+        ? (settings.enableDiarization && settings.hfToken ? "diarize" : "whisper")
+        : "soniox";
+
+      // Pre-fetch STT module (resolves while doing device/DB work below)
+      const sttFactoryP = sttMode === "diarize" ? getDiarizeSession()
+        : sttMode === "whisper" ? getWhisperSession()
+        : getSonioxSession();
 
       // Resolve devices
       const devices = await listInputDevices();
@@ -203,9 +197,6 @@ io.on("connection", (socket) => {
         dbSessionId = history.createSession(audioSource, historyTargetLang, deviceName, sessionContext);
       }
 
-      const sttMode = engine === "local-whisper"
-        ? (settings.enableDiarization && settings.hfToken ? "diarize" : "whisper")
-        : "soniox";
       log.info("Session starting", {
         socketId: socket.id,
         sessionId: dbSessionId,
@@ -228,11 +219,17 @@ io.on("connection", (socket) => {
         ? ["mic", "system"]
         : [audioSource];
 
-      for (const source of sources) {
+      // Register state and ACK the client immediately — STT setup continues below
+      activeSessions.set(socket.id, state);
+      socket.emit("status", { listening: true, sessionId: dbSessionId, audioSource });
+
+      const createSTT = await sttFactoryP;
+
+      await Promise.all(sources.map(async (source) => {
         const captureDev = source === "mic" ? micCaptureDev : systemCaptureDev;
         if (captureDev == null) {
           emitError(socket, { key: "errNoDevice", params: { source } });
-          continue;
+          return;
         }
 
         // Start audio capture
@@ -241,7 +238,7 @@ io.on("connection", (socket) => {
           emitError(socket, { key: "errAudioCapture", params: { source, detail: err.message } });
         });
 
-        // Create STT session — Soniox (cloud) or local Whisper
+        // Create STT session
         const sourceTargetLang = source === "mic" ? micTargetLanguage : systemTargetLanguage;
         let stt;
         if (engine === "local-whisper") {
@@ -258,31 +255,29 @@ io.on("connection", (socket) => {
             libreTranslateUrl: settings.libreTranslateUrl,
             context: sessionContext,
           };
-          if (settings.enableDiarization && settings.hfToken) {
-            const createDiarizeSession = await getDiarizeSession();
-            stt = createDiarizeSession({ ...sessionOpts, hfToken: settings.hfToken });
-          } else {
-            const createWhisperSession = await getWhisperSession();
-            stt = createWhisperSession(sessionOpts);
-          }
+          stt = sttMode === "diarize"
+            ? createSTT({ ...sessionOpts, hfToken: settings.hfToken })
+            : createSTT(sessionOpts);
         } else {
-          const createSonioxSession = await getSonioxSession();
-          stt = createSonioxSession({ targetLanguage: sourceTargetLang, languageHints, apiKey: settings.sonioxApiKey || undefined, context: sessionContext });
+          stt = createSTT({ targetLanguage: sourceTargetLang, languageHints, apiKey: settings.sonioxApiKey || undefined, context: sessionContext });
         }
 
+        // In "both" mode, prefix speaker IDs with source to avoid collisions
+        // between independent STT sessions (e.g. spk_0 from mic vs spk_0 from system)
+        const prefixSpeaker = (obj) => {
+          if (audioSource !== "both" || !obj.speaker) return obj;
+          return { ...obj, speaker: `${source}:${obj.speaker}` };
+        };
+
         stt.onPartial((partial) => {
-          socket.emit("partial-result", { source, ...partial });
+          socket.emit("partial-result", { source, ...prefixSpeaker(partial) });
         });
 
         stt.onUtterance((utterance) => {
-          socket.emit("utterance", { source, ...utterance });
-
-          // Save to DB
+          const prefixed = prefixSpeaker(utterance);
+          socket.emit("utterance", { source, ...prefixed });
           if (utterance.originalText) {
-            history.addUtterance(dbSessionId, {
-              ...utterance,
-              source,
-            });
+            history.addUtterance(dbSessionId, { ...prefixed, source });
           }
         });
 
@@ -292,25 +287,28 @@ io.on("connection", (socket) => {
         });
 
         await stt.connect();
+
+        // Abort if session was stopped or replaced while connecting
+        if (activeSessions.get(socket.id) !== state) {
+          capture.stop();
+          stt.stop().catch(() => {});
+          return;
+        }
+
         await stt.startStreaming();
 
-        // Pipe audio chunks to STT engine
-        capture.stream.on("data", (chunk) => {
-          stt.sendAudio(chunk);
-        });
-
-        capture.stream.on("end", () => {
-          stt.stop().catch(() => {});
-        });
+        capture.stream.on("data", (chunk) => stt.sendAudio(chunk));
+        capture.stream.on("end", () => stt.stop().catch(() => {}));
 
         state.captures.push(capture);
         state.sttSessions.push(stt);
-      }
+      }));
 
-      activeSessions.set(socket.id, state);
-      socket.emit("status", { listening: true, sessionId: dbSessionId, audioSource });
-      log.info("Started listening", { socketId: socket.id, sessionId: dbSessionId, source: audioSource });
+      log.info("All sources connected", { socketId: socket.id, sessionId: dbSessionId });
     } catch (err) {
+      // Revert to stopped state on failure
+      stopSession(socket.id).catch(() => {});
+      socket.emit("status", { listening: false });
       const key = err.message?.includes("authenticate") || err.message?.includes("401") || err.message?.includes("Unauthorized")
         ? "errInvalidApiKey"
         : err.message?.includes("ENOTFOUND") || err.message?.includes("ECONNREFUSED")
@@ -345,9 +343,9 @@ io.on("connection", (socket) => {
     log.info("Resumed", { socketId: socket.id });
   });
 
-  socket.on("stop-listening", async () => {
-    await stopSession(socket.id);
+  socket.on("stop-listening", () => {
     socket.emit("status", { listening: false });
+    stopSession(socket.id).catch((err) => log.error("Stop error", err));
   });
 
   socket.on("disconnect", async () => {
@@ -360,23 +358,20 @@ async function stopSession(socketId) {
   const state = activeSessions.get(socketId);
   if (!state) return;
 
+  // Remove immediately to prevent double-stop from concurrent disconnect + stop-listening
+  activeSessions.delete(socketId);
+
   log.info("Stopping session", { socketId, sessionId: state.dbSessionId });
 
   for (const capture of state.captures) {
     capture.stop();
   }
 
-  for (const stt of state.sttSessions) {
-    try {
-      await stt.stop();
-    } catch {
-      // Ignore stop errors
-    }
-  }
-
-  const history = await getHistory();
-  history.endSession(state.dbSessionId);
-  activeSessions.delete(socketId);
+  // End DB session + stop all STT sessions in parallel
+  await Promise.all([
+    getHistory().then((h) => h.endSession(state.dbSessionId)),
+    ...state.sttSessions.map((stt) => stt.stop().catch(() => {})),
+  ]);
 }
 
 // Start server

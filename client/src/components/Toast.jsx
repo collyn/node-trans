@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useSocket } from "../context/SocketContext";
+import { useSocket, useSocketActions } from "../context/SocketContext";
 import { useI18n } from "../i18n/I18nContext";
 
 const variants = {
@@ -15,7 +15,7 @@ const icons = {
 };
 
 function ToastItem({ toast }) {
-  const { dispatch } = useSocket();
+  const { dispatch } = useSocketActions();
   const { t } = useI18n();
 
   const dismiss = () => dispatch({ type: "DISMISS_TOAST", payload: toast.id });

@@ -53,6 +53,8 @@ export function getDb() {
       PRIMARY KEY (session_id, speaker),
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     );
+
+    CREATE INDEX IF NOT EXISTS idx_utterances_session ON utterances(session_id);
   `);
 
   // Migrate: add title column if missing
@@ -70,8 +72,8 @@ export function getDb() {
 
 export function createSession(audioSource, targetLanguage, deviceName, context = null) {
   getDb();
-  const { cnt } = db.prepare("SELECT COUNT(*) as cnt FROM sessions").get();
-  const autoTitle = `Session ${cnt + 1}`;
+  const { maxId } = db.prepare("SELECT COALESCE(MAX(id), 0) as maxId FROM sessions").get();
+  const autoTitle = `Session ${maxId + 1}`;
   const result = db.prepare(
     "INSERT INTO sessions (title, audio_source, target_language, device_name, context) VALUES (?, ?, ?, ?, ?)"
   ).run(autoTitle, audioSource, targetLanguage, deviceName || null, context || null);
@@ -113,9 +115,11 @@ export function getSessions(limit = 50, offset = 0) {
   getDb();
   return db.prepare(
     `SELECT s.*,
-      (SELECT COUNT(*) FROM utterances u WHERE u.session_id = s.id) AS utterance_count,
-      (SELECT COUNT(DISTINCT u.speaker) FROM utterances u WHERE u.session_id = s.id AND u.speaker IS NOT NULL) AS speaker_count
+      COUNT(u.id) AS utterance_count,
+      COUNT(DISTINCT u.speaker) AS speaker_count
     FROM sessions s
+    LEFT JOIN utterances u ON u.session_id = s.id
+    GROUP BY s.id
     ORDER BY s.started_at DESC LIMIT ? OFFSET ?`
   ).all(limit, offset);
 }
@@ -151,16 +155,10 @@ export function renameSession(sessionId, title) {
 
 export function deleteSession(sessionId) {
   getDb();
-  // Temporarily disable FK checks to avoid failures from orphaned rows in other sessions
-  db.pragma("foreign_keys = OFF");
-  try {
-    const del = db.transaction(() => {
-      db.prepare("DELETE FROM speaker_aliases WHERE session_id = ?").run(sessionId);
-      db.prepare("DELETE FROM utterances WHERE session_id = ?").run(sessionId);
-      db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
-    });
-    del();
-  } finally {
-    db.pragma("foreign_keys = ON");
-  }
+  const del = db.transaction(() => {
+    db.prepare("DELETE FROM speaker_aliases WHERE session_id = ?").run(sessionId);
+    db.prepare("DELETE FROM utterances WHERE session_id = ?").run(sessionId);
+    db.prepare("DELETE FROM sessions WHERE id = ?").run(sessionId);
+  });
+  del();
 }

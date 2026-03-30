@@ -32,7 +32,7 @@ export async function translateText(text, sourceLang, settings) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: ollamaModel,
-          prompt: `${context ? `Context: ${context}\n\n` : ""}Translate the following text to ${targetLangName}. Reply with only the translation, no explanation:\n\n${text}`,
+          prompt: `${context ? `[Context: ${context.slice(0, 200).replace(/\n/g, " ")}]\n\n` : ""}Translate the following text to ${targetLangName}. Reply with only the translation, no explanation:\n\n${text}`,
           stream: false,
         }),
         signal: AbortSignal.timeout(15000),

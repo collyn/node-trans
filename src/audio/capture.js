@@ -54,6 +54,8 @@ export function startCapture(device) {
   });
 
   let paused = false;
+  let stopped = false;
+  let killTimer = null;
 
   // Gate: when paused, drop audio data (ffmpeg keeps running but Soniox gets nothing)
   const gate = new Transform({
@@ -86,13 +88,13 @@ export function startCapture(device) {
     },
 
     stop() {
+      if (stopped) return;
+      stopped = true;
       log.info("Stopping capture", { device });
       if (IS_WIN) {
         // On Windows, write 'q' to stdin for graceful exit, then force kill as fallback
-        try {
-          ffmpeg.stdin.write("q");
-        } catch {}
-        setTimeout(() => {
+        try { ffmpeg.stdin.write("q"); } catch {}
+        killTimer = setTimeout(() => {
           try { ffmpeg.kill(); } catch {}
         }, 500);
       } else {
@@ -106,7 +108,8 @@ export function startCapture(device) {
         callback(err);
       });
       ffmpeg.on("exit", (code) => {
-        if (code && code !== 0 && code !== 255) {
+        if (killTimer) { clearTimeout(killTimer); killTimer = null; }
+        if (code && code !== 0 && code !== 255 && !stopped) {
           log.error("ffmpeg exited with error", { code, device, stderr: stderrBuf.trim() });
           callback(new Error(`ffmpeg exited with code ${code}`));
         }

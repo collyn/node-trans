@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useSocket } from "../../context/SocketContext";
+import { useSocketActions } from "../../context/SocketContext";
 import { fetchSettings, fetchDevices, saveSettings } from "../../utils/api";
 import { LANGUAGE_OPTIONS, CONTEXT_PRESETS, WHISPER_MODEL_OPTIONS, OLLAMA_MODEL_OPTIONS } from "../../utils/constants";
 import { useI18n } from "../../i18n/I18nContext";
@@ -19,7 +19,7 @@ const UI_LANG_OPTIONS = [
 
 export default function SettingsModal({ onClose }) {
   const { t, lang, setLang } = useI18n();
-  const { dispatch } = useSocket();
+  const { dispatch } = useSocketActions();
   const [activeTab, setActiveTab] = useState("audio");
 
   const [audioSource, setAudioSource] = useState("mic");

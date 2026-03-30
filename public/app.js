@@ -150,7 +150,7 @@ socket.on("utterance", (data) => {
     ? `<span class="source-label">${data.source.toUpperCase()}</span>`
     : "";
 
-  const speaker = data.speaker ? `Speaker ${data.speaker}` : "Speaker";
+  const speaker = data.speaker ? `Speaker ${getSpeakerIndex(data.speaker) + 1}` : "Speaker";
   const lang = data.originalLanguage
     ? `<span class="lang-badge">${data.originalLanguage}</span>`
     : "";
@@ -372,7 +372,7 @@ async function loadSessionDetail(id) {
     // Speaker aliases & unique speakers
     const aliases = data.speakerAliases || {};
     const speakers = [...new Set(utts.map((u) => u.speaker).filter(Boolean))];
-    const speakerName = (s) => aliases[s] || `Speaker ${s}`;
+    const speakerName = (s) => aliases[s] || `Speaker ${speakers.indexOf(s) + 1}`;
 
     document.getElementById("sessionInfo").innerHTML = `
       <div class="session-title-row">
@@ -419,7 +419,7 @@ async function loadSessionDetail(id) {
     document.querySelectorAll(".btn-rename-speaker").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const speaker = btn.dataset.speaker;
-        const current = aliases[speaker] || `Speaker ${speaker}`;
+        const current = aliases[speaker] || `Speaker ${speakers.indexOf(speaker) + 1}`;
         const newName = prompt(`Rename ${current}:`, current);
         if (newName && newName !== current) {
           await fetch(`/api/sessions/${id}/speakers/${encodeURIComponent(speaker)}`, {

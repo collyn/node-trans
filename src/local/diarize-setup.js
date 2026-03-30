@@ -5,7 +5,7 @@
  */
 
 import { spawn, execSync } from "child_process";
-import { mkdirSync } from "fs";
+import { mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import os from "os";
 
@@ -28,7 +28,7 @@ function findPython() {
       const m = out.match(/Python (\d+)\.(\d+)/);
       if (m) {
         const [, maj, min] = m.map(Number);
-        if (maj === 3 && min >= 10 && min <= 12) return bin;
+        if (maj === 3 && min >= 10) return bin;
       }
     } catch {}
   }
@@ -74,7 +74,6 @@ export async function runDiarizeSetup(onLine) {
     ? join(VENV_DIR, "Scripts", "python.exe")
     : join(VENV_DIR, "bin", "python3");
 
-  const { existsSync } = await import("fs");
   const venvExists = existsSync(venvPy);
 
   // If venv already exists, check what's missing and only install what's needed
@@ -175,7 +174,7 @@ export async function runDiarizeSetup(onLine) {
     "import torch, faster_whisper, pyannote.audio",
     "print('OK')",
   ].join("; ");
-  await spawnLines(venvPython, ["-c", verifyScript], onLine);
+  await spawnLines(venvPy, ["-c", verifyScript], onLine);
 
   onLine("\nAll dependencies installed successfully.");
 }

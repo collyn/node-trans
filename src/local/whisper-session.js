@@ -51,6 +51,7 @@ export function createSession({
   let stdoutBuf = "";
   let stopped = false;
   let ready = false;
+  let readyResolve = null;
 
   const translateToEnglish = targetLanguage === "en" && localTranslationEngine !== "none";
   const detectedLang = whisperLanguage === "auto"
@@ -91,6 +92,8 @@ export function createSession({
     switch (msg.type) {
       case "ready":
         ready = true;
+        readyResolve?.();
+        readyResolve = null;
         log.info("Whisper model loaded", { model: whisperModel });
         break;
 
@@ -199,14 +202,12 @@ export function createSession({
           connectReject = null;
           reject(new Error("Timed out waiting for whisper-worker to load model"));
         }, READY_TIMEOUT_MS);
-        const poll = setInterval(() => {
-          if (ready) {
-            clearInterval(poll);
-            clearTimeout(timeout);
-            connectReject = null;
-            resolve();
-          }
-        }, 100);
+        readyResolve = () => {
+          clearTimeout(timeout);
+          connectReject = null;
+          resolve();
+        };
+        if (ready) readyResolve();
       });
     },
 

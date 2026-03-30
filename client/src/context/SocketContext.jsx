@@ -2,7 +2,8 @@ import { createContext, useContext, useReducer, useEffect, useMemo } from "react
 import { io } from "socket.io-client";
 import { getSpeakerIndex } from "../utils/speakerColors";
 
-const SocketContext = createContext(null);
+const SocketActionsContext = createContext(null);
+const SocketStateContext = createContext(null);
 
 const OVERLAY_DEFAULTS = {
   opacity: 0.8,
@@ -247,6 +248,7 @@ function reducer(state, action) {
 export function SocketProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const socket = useMemo(() => io(), []);
+  const actions = useMemo(() => ({ socket, dispatch }), [socket]);
 
   useEffect(() => {
     const fwdOverlay = window.electronAPI?.sendOverlayData;
@@ -296,15 +298,23 @@ export function SocketProvider({ children }) {
     };
   }, [socket]);
 
-  const value = useMemo(() => ({ socket, state, dispatch }), [socket, state]);
-
   return (
-    <SocketContext.Provider value={value}>
-      {children}
-    </SocketContext.Provider>
+    <SocketActionsContext.Provider value={actions}>
+      <SocketStateContext.Provider value={state}>
+        {children}
+      </SocketStateContext.Provider>
+    </SocketActionsContext.Provider>
   );
 }
 
+/** Returns stable { socket, dispatch } — does NOT re-render on state changes */
+export function useSocketActions() {
+  return useContext(SocketActionsContext);
+}
+
+/** Returns { socket, state, dispatch } — backward compatible, re-renders on state changes */
 export function useSocket() {
-  return useContext(SocketContext);
+  const { socket, dispatch } = useContext(SocketActionsContext);
+  const state = useContext(SocketStateContext);
+  return { socket, state, dispatch };
 }
