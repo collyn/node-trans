@@ -139,6 +139,25 @@ ipcMain.on("overlay:close", () => {
   closeOverlayWindow();
 });
 
+// Overlay window dragging via IPC (reliable on macOS with transparent frameless windows)
+let overlayDragStart = null;
+
+ipcMain.on("overlay:drag-start", () => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    const [x, y] = overlayWindow.getPosition();
+    overlayDragStart = { x, y };
+  }
+});
+
+ipcMain.on("overlay:drag-move", (_e, dx, dy) => {
+  if (overlayWindow && !overlayWindow.isDestroyed() && overlayDragStart) {
+    overlayWindow.setPosition(
+      Math.round(overlayDragStart.x + dx),
+      Math.round(overlayDragStart.y + dy)
+    );
+  }
+});
+
 app.whenReady().then(async () => {
   // Request microphone permission on macOS (triggers system dialog on first run)
   if (process.platform === "darwin") {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import ReactDOM from "react-dom/client";
 
 const DEFAULTS = {
@@ -21,6 +21,29 @@ function OverlayApp() {
   const [partials, setPartials] = useState({});
   const [settings, setSettings] = useState(DEFAULTS);
   const scrollRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef(null);
+
+  const onPointerDown = useCallback((e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragStartRef.current = { x: e.screenX, y: e.screenY };
+    window.overlayAPI?.dragStart();
+    setIsDragging(true);
+  }, []);
+
+  const onPointerMove = useCallback((e) => {
+    if (!isDragging || !dragStartRef.current) return;
+    const dx = e.screenX - dragStartRef.current.x;
+    const dy = e.screenY - dragStartRef.current.y;
+    window.overlayAPI?.dragMove(dx, dy);
+  }, [isDragging]);
+
+  const onPointerUp = useCallback(() => {
+    setIsDragging(false);
+    dragStartRef.current = null;
+  }, []);
 
   useEffect(() => {
     const api = window.overlayAPI;
@@ -102,7 +125,6 @@ function OverlayApp() {
         fontSize: `${s.scale}rem`,
         fontFamily: s.fontFamily,
         textAlign: s.textAlign,
-        WebkitAppRegion: "drag",
         display: "flex",
         flexDirection: "column",
         borderRadius: 14,
@@ -111,7 +133,7 @@ function OverlayApp() {
         backdropFilter: "blur(12px)",
       }}
     >
-      {/* Title bar */}
+      {/* Title bar — drag handle */}
       <div
         style={{
           display: "flex",
@@ -122,13 +144,19 @@ function OverlayApp() {
           fontSize: "0.7rem",
           color: mutedColor,
           flexShrink: 0,
+          cursor: isDragging ? "grabbing" : "grab",
+          userSelect: "none",
+          touchAction: "none",
         }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
       >
         <span>Node Trans</span>
         <button
           onClick={() => window.overlayAPI?.close()}
+          onPointerDown={(e) => e.stopPropagation()}
           style={{
-            WebkitAppRegion: "no-drag",
             background: "none",
             border: "none",
             color: mutedColor,
@@ -150,7 +178,6 @@ function OverlayApp() {
           flex: 1,
           overflowY: "auto",
           overflowX: "hidden",
-          WebkitAppRegion: "no-drag",
         }}
       >
         {visibleUtterances.length === 0 && visiblePartials.length === 0 && (
