@@ -1,18 +1,19 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { I18nProvider } from "./i18n/I18nContext";
-import { SocketProvider, useSocket } from "./context/SocketContext";
+import { SocketProvider, useUI } from "./context/SocketContext";
 import Header from "./components/Header";
 import TabNav from "./components/TabNav";
 import LiveTab from "./components/live/LiveTab";
-import SettingsModal from "./components/settings/SettingsTab";
 import Sidebar from "./components/Sidebar";
-import OverlayWindow from "./components/live/OverlayWindow";
 import ToastContainer from "./components/Toast";
 import StartupCheck from "./components/StartupCheck";
 
+const SettingsModal = lazy(() => import("./components/settings/SettingsTab"));
+const OverlayWindow = lazy(() => import("./components/live/OverlayWindow"));
+
 function AppContent() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { state } = useSocket();
+  const { overlayVisible } = useUI();
 
   return (
     <>
@@ -26,8 +27,16 @@ function AppContent() {
           </div>
         </div>
       </div>
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
-      {state.overlayVisible && !window.electronAPI?.isElectron && <OverlayWindow />}
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
+      {overlayVisible && !window.electronAPI?.isElectron && (
+        <Suspense fallback={null}>
+          <OverlayWindow />
+        </Suspense>
+      )}
       <ToastContainer />
       <StartupCheck />
     </>

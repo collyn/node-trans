@@ -76,6 +76,18 @@ app.use("/api", apiRoutes);
 
 // Active sessions per socket
 const activeSessions = new Map();
+const SESSION_TTL = 4 * 60 * 60 * 1000; // 4 hours max session
+
+// Periodic cleanup of stale sessions (safety net for dropped connections)
+const cleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [socketId, state] of activeSessions) {
+    if (state.startedAt && now - state.startedAt > SESSION_TTL) {
+      log.warn("Cleaning up stale session", { socketId, sessionId: state.dbSessionId });
+      stopSession(socketId).catch(() => {});
+    }
+  }
+}, 60_000);
 
 // Log and emit an error event to the client in one call
 function emitError(socket, payload) {
@@ -213,6 +225,8 @@ io.on("connection", (socket) => {
         paused: false,
         captures: [],
         sttSessions: [],
+        partialTimers: [],
+        startedAt: Date.now(),
       };
 
       const sources = audioSource === "both"
@@ -232,11 +246,34 @@ io.on("connection", (socket) => {
           return;
         }
 
-        // Start audio capture
-        const capture = startCapture(captureDev);
-        capture.onError((err) => {
-          emitError(socket, { key: "errAudioCapture", params: { source, detail: err.message } });
-        });
+        // Start audio capture with retry on crash
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+        let currentCapture = null;
+
+        function launchCapture() {
+          currentCapture = startCapture(captureDev);
+          currentCapture.onError((err) => {
+            emitError(socket, { key: "errAudioCapture", params: { source, detail: err.message } });
+            // Retry if session is still active
+            if (retryCount < MAX_RETRIES && activeSessions.get(socket.id) === state && !state.paused) {
+              retryCount++;
+              log.warn(`Capture crashed, retrying (${retryCount}/${MAX_RETRIES})`, { device: captureDev, source });
+              setTimeout(() => {
+                if (activeSessions.get(socket.id) === state) {
+                  launchCapture();
+                  // Re-pipe to STT
+                  currentCapture.stream.on("data", (chunk) => stt.sendAudio(chunk));
+                  state.captures = state.captures.filter((c) => c !== currentCapture);
+                  state.captures.push(currentCapture);
+                }
+              }, 1000 * retryCount);
+            }
+          });
+          return currentCapture;
+        }
+
+        const capture = launchCapture();
 
         // Create STT session
         const sourceTargetLang = source === "mic" ? micTargetLanguage : systemTargetLanguage;
@@ -269,9 +306,20 @@ io.on("connection", (socket) => {
           return { ...obj, speaker: `${source}:${obj.speaker}` };
         };
 
+        // Batch partial results — flush at most every 100ms to reduce message overhead
+        let pendingPartial = null;
+        let partialTimer = null;
         stt.onPartial((partial) => {
-          socket.emit("partial-result", { source, ...prefixSpeaker(partial) });
+          pendingPartial = { source, ...prefixSpeaker(partial) };
+          if (!partialTimer) {
+            partialTimer = setTimeout(() => {
+              if (pendingPartial) socket.emit("partial-result", pendingPartial);
+              pendingPartial = null;
+              partialTimer = null;
+            }, 100);
+          }
         });
+        state.partialTimers.push(() => { clearTimeout(partialTimer); partialTimer = null; });
 
         stt.onUtterance((utterance) => {
           const prefixed = prefixSpeaker(utterance);
@@ -363,6 +411,9 @@ async function stopSession(socketId) {
 
   log.info("Stopping session", { socketId, sessionId: state.dbSessionId });
 
+  // Clear batched partial timers
+  for (const clearTimer of state.partialTimers || []) clearTimer();
+
   for (const capture of state.captures) {
     capture.stop();
   }
@@ -385,6 +436,16 @@ export async function startServer(overridePort) {
     });
   });
 }
+
+// Graceful shutdown — clean up all active sessions and timers
+async function shutdown() {
+  clearInterval(cleanupInterval);
+  const stops = [...activeSessions.keys()].map((id) => stopSession(id).catch(() => {}));
+  await Promise.all(stops);
+  server.close();
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 // Auto-start when running directly (not via Electron)
 if (!process.env.ELECTRON) {

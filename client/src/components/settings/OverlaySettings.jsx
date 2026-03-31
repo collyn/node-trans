@@ -1,4 +1,4 @@
-import { useSocket } from "../../context/SocketContext";
+import { useSocketActions, useUI } from "../../context/SocketContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { saveOverlaySettings } from "../../utils/api";
 
@@ -22,8 +22,8 @@ const CONTENT_OPTIONS = [
 
 export default function OverlaySettings() {
   const { t } = useI18n();
-  const { state, dispatch } = useSocket();
-  const s = state.overlaySettings;
+  const { dispatch } = useSocketActions();
+  const { overlaySettings: s } = useUI();
 
   const update = (patch) => {
     dispatch({ type: "UPDATE_OVERLAY_SETTINGS", payload: patch });

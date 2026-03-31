@@ -26,9 +26,10 @@ Audio device (mic / system audio)
         │                                             │
         ▼                                             ▼
   Soniox Cloud API                   whisper-worker.py (Python subprocess)
-  · Real-time transcription          · openai-whisper (CPU)
-  · Cloud translation                · 6s sliding window, 4s stride
-  · Speaker diarization (cloud)      · Silence detection → early flush
+  · Real-time transcription          · faster-whisper (CPU, int8)
+  · Cloud translation                · 4s sliding window, 2.5s stride
+  · Speaker diarization (cloud)      · Silence detection → early flush (2 empty windows)
+                                     · Max accumulation flush (200 chars)
                                      · Outputs partial + utterance events
                                      · Translation via Ollama / LibreTranslate (if enabled)
         │                                             │
@@ -39,9 +40,9 @@ Audio device (mic / system audio)
         │                                                     │
         │                                                     ▼
         │                                              diarize.py (Python subprocess)
-        │                                              · openai-whisper (CPU)
+        │                                              · faster-whisper (CPU, int8)
         │                                              · pyannote/speaker-diarization-3.1 (MPS/CUDA)
-        │                                              · 10s window, 5s stride
+        │                                              · 6s window, 3s stride
         │                                              · speaker: SPEAKER_00, SPEAKER_01...
         │                                              [Fallback to whisper-session on error]
         │
@@ -54,7 +55,7 @@ Audio device (mic / system audio)
    React UI (browser)          Overlay window (Electron)
    · Live transcript           · Always-on-top
    · Speaker colors            · Transparent, frameless
-   · Session history
+   · Session history           · Draggable
         │
         ▼
    SQLite (history.db)
@@ -69,38 +70,64 @@ Audio device (mic / system audio)
 
 | File | Role |
 |------|------|
-| `server.js` | Express + Socket.IO. Manages sessions, orchestrates audio capture and STT |
-| `audio/capture.js` | Spawns FFmpeg, normalizes PCM into 120ms chunks, supports pause/resume |
-| `audio/devices.js` | Lists audio devices by parsing ffmpeg output |
-| `soniox/session.js` | Soniox SDK wrapper. Real-time transcription + translation + diarization via cloud |
-| `local/whisper-session.js` | Offline STT. Spawns `whisper-worker.py` as a persistent subprocess; 6s sliding window with silence detection |
-| `local/whisper-setup.js` | Setup helper: creates `~/.node-trans/venv`, installs `openai-whisper`, downloads model via `whisper-download.py` |
-| `local/whisper-worker.py` | Persistent Python STT worker. Loads openai-whisper model once, processes audio via sliding window, emits `partial`/`utterance` JSON |
-| `local/whisper-download.py` | Downloads a Whisper model to `~/.cache/whisper/` with JSON progress reporting (SHA-256 verified) |
-| `local/diarize-session.js` | Python subprocess wrapper. Sends audio via stdin, receives utterances via stdout. Falls back to whisper-session on failure |
-| `local/diarize-setup.js` | Setup helper: creates shared `~/.node-trans/venv`, installs torch + openai-whisper + pyannote.audio |
-| `local/diarize.py` | Python worker: pyannote + openai-whisper. Receives base64 PCM, returns JSON utterances with speaker labels |
-| `local/translate.js` | Calls Ollama or LibreTranslate. Non-fatal: returns empty string on error |
-| `storage/history.js` | SQLite (better-sqlite3). CRUD for sessions, utterances, speaker aliases |
+| `server.js` | Express 5 + Socket.IO. Manages sessions, orchestrates audio capture and STT. Lazy-loads heavy modules. Tracks active sessions per socket in an in-memory Map |
+| `logger.js` | Centralized structured logging with file rotation. Logs to `~/.node-trans/logs/app.log`, rotates at 10MB, mirrors to console only in dev mode |
+| `audio/capture.js` | Spawns FFmpeg, normalizes PCM into 120ms chunks via ChunkTransform, supports pause/resume via gate stream |
+| `audio/devices.js` | Lists audio devices by parsing ffmpeg output. 30-second cache. Uses `system_profiler` (macOS) or PowerShell (Windows) for output devices |
+| `soniox/session.js` | Soniox SDK wrapper (RealtimeUtteranceBuffer). Real-time transcription + translation + speaker diarization via cloud |
+| `local/whisper-session.js` | Offline STT. Spawns `whisper-worker.py` as a persistent subprocess; sends base64 audio via stdin JSON. Translation debouncing (500ms) for partials |
+| `local/whisper-setup.js` | Setup helper: creates `~/.node-trans/venv`, installs `faster-whisper`, downloads model via `whisper-download.py`. Supports upgrade from openai-whisper |
+| `local/whisper-worker.py` | Persistent Python STT worker. Loads faster-whisper model once (CPU, int8), 4s sliding window with 2.5s stride, emits `partial`/`utterance` JSON |
+| `local/whisper-download.py` | Downloads faster-whisper models from HuggingFace Hub with JSON progress reporting |
+| `local/diarize-session.js` | Python subprocess wrapper. Sends audio via stdin, receives utterances via stdout. Falls back to whisper-session on failure (120s timeout or crash) |
+| `local/diarize-setup.js` | Setup helper: creates shared `~/.node-trans/venv`, installs torch + torchaudio + faster-whisper + pyannote.audio 3.1.1. Checks existing packages, installs only what's missing |
+| `local/diarize.py` | Python worker: pyannote 3.1.1 + faster-whisper. Receives base64 PCM, returns JSON utterances with speaker labels. Includes compatibility shims for torchaudio 2.0+ and NumPy 2.0 |
+| `local/translate.js` | Calls Ollama or LibreTranslate. Sends context (first 200 chars) to Ollama for better translation. Non-fatal: returns empty string on error |
+| `local/python-utils.js` | Resolves Python binary from `~/.node-trans/venv`. Platform-specific probing (macOS/Windows) |
+| `local/setup-log.js` | Wraps setup event callbacks with persistent file logging. Logs progress at milestones (0%, 10%, ..., 100%) |
+| `storage/history.js` | SQLite (better-sqlite3). CRUD for sessions, utterances, speaker aliases. Supports session resumption |
 | `storage/settings.js` | Reads/writes `settings.json`. Loaded synchronously |
-| `routes/api.js` | REST API: settings, sessions, devices, local status |
+| `storage/export.js` | Exports a session to Markdown format with speaker aliases, timestamps, and duration |
+| `routes/api.js` | REST API: settings, sessions, devices, local setup (Whisper/Diarize via SSE), focused status checks (Whisper, Ollama, LibreTranslate, Diarize) |
 
 ### Frontend (`client/src/`)
 
 | File | Role |
 |------|------|
-| `context/SocketContext.jsx` | Central state (useReducer). Socket.IO connection, utterances, speaker colors, session selection |
-| `components/live/` | Real-time UI: controls, transcript display, utterance rendering |
-| `components/history/` | Session history browsing, detail view, speaker renaming, export |
-| `components/settings/` | Settings form: engine, audio, translation, diarization, overlay |
-| `i18n/` | Bilingual UI (EN/VI). `t()` function from I18nContext |
+| `App.jsx` | Main app component |
+| `main.jsx` | Entry point for main app |
+| `overlay-main.jsx` | Entry point for overlay app (separate HTML entry) |
+| `context/SocketContext.jsx` | Central state (useReducer). Socket.IO connection, utterances, speaker colors, session selection, overlay state, toast notifications |
+| `components/Header.jsx` | Header bar with theme toggle |
+| `components/Sidebar.jsx` | Session list sidebar with sorting/filtering |
+| `components/TabNav.jsx` | Tab navigation UI |
+| `components/StatusBar.jsx` | Connection and listening status display |
+| `components/Toast.jsx` | Toast notification container |
+| `components/Modal.jsx` | Base modal dialog component |
+| `components/StartupCheck.jsx` | Initial setup verification |
+| `components/live/LiveTab.jsx` | Main live transcription tab |
+| `components/live/Controls.jsx` | Start/stop/pause/resume buttons with settings |
+| `components/live/Transcript.jsx` | Transcript display area |
+| `components/live/Utterance.jsx` | Single utterance with speaker & translation |
+| `components/live/OverlayWindow.jsx` | Draggable overlay window for web version |
+| `components/settings/SettingsTab.jsx` | Comprehensive settings panel (audio, engine, context, overlay tabs) |
+| `components/settings/OverlaySettings.jsx` | Overlay-specific customization options |
+| `components/history/SpeakerList.jsx` | Speaker list for current session |
+| `hooks/useTheme.js` | Theme toggle hook |
+| `hooks/useDraggable.js` | Draggable overlay hook |
+| `utils/api.js` | Fetch wrapper for REST API calls |
+| `utils/constants.js` | Language options (30+), Whisper model options, Ollama model options, context presets |
+| `utils/speakerColors.js` | Speaker-to-color mapping (mod 8 palette) |
+| `i18n/I18nContext.jsx` | Bilingual UI provider (EN/VI). `t()` function with parameter substitution |
+| `i18n/locales.js` | All UI strings (226+ keys per language) |
 
 ### Electron (`electron/`)
 
 | File | Role |
 |------|------|
-| `main.js` | Starts the Express server internally, loads the app URL. Manages main window + overlay window. IPC bridge |
-| `preload.js` | Exposes `window.electronAPI` to the renderer (safe IPC via contextBridge) |
+| `main.js` | Starts the Express server internally, loads the app URL. Manages main window (1200x800) + overlay window (500x220, always-on-top, transparent, frameless). IPC bridge for overlay toggle/data/settings/drag |
+| `preload.js` | Exposes `window.electronAPI` to the renderer (toggleOverlay, sendOverlayData, sendOverlaySettings, onOverlayClosed) |
+| `overlay-preload.js` | Exposes `window.overlayAPI` to the overlay renderer (onData, onSettings, close, dragStart, dragMove) |
 
 ---
 
@@ -123,20 +150,21 @@ Cons: requires API key and internet connection.
 
 ```
 Audio chunks → whisper-worker.py (Python subprocess, model loaded once)
-                    · openai-whisper running on CPU
-                    · 6s sliding window, 4s stride (2s overlap for context)
-                    · Silence detection → early flush at 1.5s
+                    · faster-whisper running on CPU (int8 quantization)
+                    · 4s sliding window, 2.5s stride (1.5s overlap for context)
+                    · Silence detection → early flush (2 consecutive empty windows)
+                    · Max accumulation flush (≥200 chars)
                     · Emits: partial (in-progress), utterance (committed)
                 [if HF token set]
                 → diarize.py (Python subprocess) — replaces whisper-worker.py
-                      · pyannote: who is speaking?
-                      · openai-whisper: what are they saying?
-                      · 10s window, 5s stride
+                      · pyannote 3.1.1: who is speaking? (MPS/CUDA)
+                      · faster-whisper: what are they saying? (CPU, int8)
+                      · 6s window, 3s stride
                       · Combined → utterance + speaker label
 ```
 
 Pros: fully offline, free.
-Cons: requires Python 3.10–3.12 and initial setup (via UI or `npm run setup:diarize`).
+Cons: requires Python 3.10+ and initial setup (via UI or `npm run setup:diarize`).
 
 ---
 
@@ -171,6 +199,7 @@ Node → Python:
 
 Python → Node:
   {"type": "ready"}
+  {"type": "partial",   "text": "..."}
   {"type": "utterance", "text": "...", "speaker": "SPEAKER_00", "start": 0.5, "end": 3.2}
   {"type": "error",    "message": "..."}
 ```
@@ -198,7 +227,8 @@ speaker_aliases -- session_id, speaker ("SPEAKER_00"), alias (user-defined name)
 |------|----------|
 | `settings.json` | `~/.node-trans/settings.json` (web) / `userData/data/settings.json` (Electron) |
 | `history.db` | `~/.node-trans/history.db` (web) / `userData/data/history.db` (Electron) |
-| `venv` | `~/.node-trans/venv/` (shared Python venv: openai-whisper + pyannote.audio) |
+| `venv` | `~/.node-trans/venv/` (shared Python venv: faster-whisper + pyannote.audio) |
+| `logs/` | `~/.node-trans/logs/` (app.log + setup logs with rotation) |
 
 Key settings:
 
@@ -211,6 +241,7 @@ localTranslationEngine  none / ollama / libretranslate
 ollamaModel             gemma3:4b / llama3.2 / ...
 hfToken                 Hugging Face READ token (for diarization)
 targetLanguage          vi / en / ja / ...
+context                 none / casual / business / IT / news / entertainment / custom
 ```
 
 ---
@@ -232,7 +263,9 @@ Resolve audio devices
     · System: from settings or auto-detect BlackHole (macOS) / VB-CABLE (Windows)
     │
     ▼
+Lazy-load STT factory (Soniox / Whisper / Diarize)
 Create STT session(s) (1 or 2 if audioSource = "both")
+    · "both" mode: speaker IDs prefixed with "mic:" or "system:"
     │
     ▼
 Start streaming audio → STT
@@ -240,11 +273,46 @@ Start streaming audio → STT
     ├── onPartial → socket.emit("partial-result") → UI shows in-progress text
     └── onUtterance → DB.addUtterance() + socket.emit("utterance") → UI + Overlay
     │
-User clicks "Stop"
+    ├── User clicks "Pause" → gate stream closes, audio drops, STT keeps running
+    └── User clicks "Resume" → gate stream opens, audio flow resumes
+    │
+User clicks "Stop" (or disconnect)
     │
     ▼
-stopSession: stop FFmpeg, stop STT, DB.endSession()
+stopSession:
+    · Delete from activeSessions (prevent double-stop)
+    · Stop all captures (synchronously)
+    · End DB session (set ended_at = now)
+    · Stop all STT sessions (parallel)
+    · Cleanup audio streams
 ```
+
+Session state:
+```javascript
+{
+  dbSessionId,        // Database session ID
+  audioSource,        // "mic" | "system" | "both"
+  paused,             // true/false
+  captures: [],       // Array of capture objects (one per source)
+  sttSessions: []     // Array of STT session objects (one per source)
+}
+```
+
+---
+
+## Key Implementation Patterns
+
+### Lazy Module Loading
+server.js caches module `import()` Promises — each heavy module (history, soniox, capture, whisper, diarize, devices) is loaded once and shared by all concurrent callers.
+
+### Error Handling
+- STT errors emit to client: `errWhisper` (local) or `errSoniox` (API)
+- Network errors: `errNetwork` (ENOTFOUND/ECONNREFUSED), `errInvalidApiKey` (401/Unauthorized)
+- Diarization fallback: diarize → whisper on timeout/crash (no speaker labels but preserves transcript)
+
+### Translation Debouncing
+- Partials: emit immediately with last known translation, debounce actual translation call (500ms)
+- Utterances: always translate immediately (final commits)
 
 ---
 
@@ -252,10 +320,10 @@ stopSession: stop FFmpeg, stop STT, DB.endSession()
 
 | Component | Required | Notes |
 |-----------|----------|-------|
-| Node.js >= 20 | ✅ | Runtime |
-| ffmpeg | ✅ | Audio capture |
-| Python 3.10–3.12 + openai-whisper | Only for Local Whisper | Setup via UI (Settings → Engine → Setup Whisper) |
-| pyannote.audio | Only for Diarization | Setup via UI or `npm run setup:diarize` |
+| Node.js >= 20 | Yes | Runtime |
+| ffmpeg | Yes | Audio capture |
+| Python 3.10+ + faster-whisper | Only for Local Whisper | Setup via UI (Settings → Engine → Setup Whisper) |
+| pyannote.audio 3.1.1 | Only for Diarization | Setup via UI or `npm run setup:diarize` |
 | Ollama | Only for Ollama translation | `ollama serve` must be running |
 | LibreTranslate | Only for LibreTranslate | Server must be running |
 | BlackHole (macOS) | Only for system audio capture | Or configure device manually |

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useSocket } from "../../context/SocketContext";
+import { useSocketActions, useSession, useTranscript } from "../../context/SocketContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { setSpeakerAlias } from "../../utils/api";
 import { SOURCE_LABELS_FULL, LANG_LABELS_FULL, CONTEXT_PRESETS } from "../../utils/constants";
@@ -12,9 +12,10 @@ const lbl = "text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wid
 const val = "text-xs text-gray-700 dark:text-gray-300";
 
 export default function LiveTab() {
-  const { state, dispatch } = useSocket();
+  const { dispatch } = useSocketActions();
+  const { selectedSessionData, selectedSessionId, isListening } = useSession();
+  const { utterances, speakerColorMap, partialResults } = useTranscript();
   const { t } = useI18n();
-  const { selectedSessionData, selectedSessionId, utterances, speakerColorMap, isListening } = state;
   const [speakerModal, setSpeakerModal] = useState(null);
 
   const sessionInfo = useMemo(() => {
@@ -93,7 +94,7 @@ export default function LiveTab() {
           )}
         </div>
       )}
-      <Transcript utterances={utterances} speakerColorMap={speakerColorMap} speakerAliases={selectedSessionData?.speakerAliases} partialResults={state.partialResults} />
+      <Transcript utterances={utterances} speakerColorMap={speakerColorMap} speakerAliases={selectedSessionData?.speakerAliases} partialResults={partialResults} />
 
       <PromptDialog
         open={!!speakerModal}

@@ -1,11 +1,11 @@
-import { useRef, useEffect } from "react";
-import { useSocket } from "../../context/SocketContext";
+import { useRef, useEffect, memo } from "react";
+import { useSession } from "../../context/SocketContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { getSpeakerIndex } from "../../utils/speakerColors";
 import Utterance from "./Utterance";
 
 export default function Transcript({ utterances, speakerColorMap, speakerAliases, partialResults }) {
-  const { state } = useSocket();
+  const { selectedSessionId } = useSession();
   const { t } = useI18n();
   const ref = useRef(null);
   const partialEntries = Object.entries(partialResults);
@@ -24,13 +24,13 @@ export default function Transcript({ utterances, speakerColorMap, speakerAliases
     >
       {!hasContent ? (
         <div className="text-gray-300 dark:text-gray-700 text-center py-15 text-sm">
-          {state.selectedSessionId ? t("pressResume") : t("pressStart")}
+          {selectedSessionId ? t("pressResume") : t("pressStart")}
         </div>
       ) : (
         <>
           {utterances.map((u, i) => (
             <Utterance
-              key={i}
+              key={u._clientId || u.id || i}
               data={u}
               speakerColorMap={speakerColorMap}
               speakerName={u.speaker && speakerAliases?.[u.speaker] ? speakerAliases[u.speaker] : undefined}
@@ -47,7 +47,7 @@ export default function Transcript({ utterances, speakerColorMap, speakerAliases
   );
 }
 
-function PartialUtterance({ data, speakerColorMap }) {
+const PartialUtterance = memo(function PartialUtterance({ data, speakerColorMap }) {
   const { t } = useI18n();
   const idx = getSpeakerIndex(data.speaker, speakerColorMap);
   const speaker = data.speaker ? `${t("speaker")} ${idx + 1}` : t("speaker");
@@ -70,4 +70,4 @@ function PartialUtterance({ data, speakerColorMap }) {
       )}
     </div>
   );
-}
+});

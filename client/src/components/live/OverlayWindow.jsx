@@ -1,10 +1,11 @@
 import { useRef, useEffect } from "react";
-import { useSocket } from "../../context/SocketContext";
+import { useSocketActions, useTranscript, useUI } from "../../context/SocketContext";
 import useDraggable from "../../hooks/useDraggable";
 
 export default function OverlayWindow() {
-  const { state, dispatch } = useSocket();
-  const { utterances, partialResults, overlaySettings: s } = state;
+  const { dispatch } = useSocketActions();
+  const { utterances, partialResults } = useTranscript();
+  const { overlaySettings: s } = useUI();
   const { position, isDragging, dragRef, dragHandlers } = useDraggable({
     x: window.innerWidth / 2 - 250,
     y: window.innerHeight - 260,

@@ -27,23 +27,36 @@ function OverlayApp() {
   const onPointerDown = useCallback((e) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
     dragStartRef.current = { x: e.screenX, y: e.screenY };
     window.overlayAPI?.dragStart();
     setIsDragging(true);
   }, []);
 
-  const onPointerMove = useCallback((e) => {
-    if (!isDragging || !dragStartRef.current) return;
-    const dx = e.screenX - dragStartRef.current.x;
-    const dy = e.screenY - dragStartRef.current.y;
-    window.overlayAPI?.dragMove(dx, dy);
-  }, [isDragging]);
+  // Use document-level listeners for reliable dragging on macOS
+  // transparent frameless Electron windows (element-level pointer
+  // capture is unreliable when BrowserWindow moves via setPosition)
+  useEffect(() => {
+    if (!isDragging) return;
 
-  const onPointerUp = useCallback(() => {
-    setIsDragging(false);
-    dragStartRef.current = null;
-  }, []);
+    const onMove = (e) => {
+      if (!dragStartRef.current) return;
+      const dx = e.screenX - dragStartRef.current.x;
+      const dy = e.screenY - dragStartRef.current.y;
+      window.overlayAPI?.dragMove(dx, dy);
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      dragStartRef.current = null;
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, [isDragging]);
 
   useEffect(() => {
     const api = window.overlayAPI;
@@ -149,8 +162,6 @@ function OverlayApp() {
           touchAction: "none",
         }}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
       >
         <span>Node Trans</span>
         <button

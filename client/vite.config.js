@@ -24,6 +24,16 @@ export default defineConfig({
         main: "client/index.html",
         overlay: "client/overlay.html",
       },
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) {
+            return "vendor-react";
+          }
+          if (id.includes("node_modules/socket.io-client")) {
+            return "vendor-socketio";
+          }
+        },
+      },
     },
   },
 });
