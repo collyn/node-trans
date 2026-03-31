@@ -85,11 +85,13 @@ from pyannote.audio import Pipeline
 
 SAMPLE_RATE = 16000
 BYTES_PER_SAMPLE = 2
-WINDOW_SECS = 6.0       # reduced from 10s for faster first result
-STRIDE_SECS = 3.0       # keeps 3s overlap for context
+WINDOW_SECS = 6.0       # inference window length
+STRIDE_SECS = 4.5       # 1.5s overlap (matches whisper-worker ratio — 3.0s caused dedup errors)
 MIN_FLUSH_SECS = 2.0    # reduced from 3s
 SILENCE_RMS_THRESHOLD = 300
 SILENCE_TRIGGER_SECS = 1.5
+UTTERANCE_SILENCE = 2   # consecutive empty windows → emit utterance
+MAX_ACCUM_CHARS = 200   # emit utterance when accumulated text exceeds this length
 
 
 def emit(obj):
@@ -136,6 +138,13 @@ class DiarizeWorker:
         self.silence_bytes = 0
         self.processing = False
         self.lock = threading.Lock()
+
+        # Accumulation state (matches whisper-worker pattern)
+        self.current_speaker = None
+        self.accum = ""
+        self.accum_start = 0.0
+        self.accum_end = 0.0
+        self.empty_windows = 0
 
     def load_models(self):
         try:
@@ -237,6 +246,21 @@ class DiarizeWorker:
                 daemon=True,
             ).start()
 
+    def _emit_accum(self):
+        """Emit accumulated utterance text and reset."""
+        if not self.accum:
+            return
+        emit({
+            "type": "utterance",
+            "text": self.accum,
+            "speaker": self.current_speaker,
+            "start": self.accum_start,
+            "end": self.accum_end,
+        })
+        self.accum = ""
+        self.current_speaker = None
+        self.empty_windows = 0
+
     def _process_window(self, pcm_bytes, win_start_secs):
         try:
             # Convert PCM to float32 (shared by both whisper and pyannote)
@@ -255,6 +279,10 @@ class DiarizeWorker:
             segments = list(segments_gen)
 
             if not segments:
+                self.empty_windows += 1
+                # Emit accumulated text after sustained silence
+                if self.accum and self.empty_windows >= UTTERANCE_SILENCE:
+                    self._emit_accum()
                 return
 
             # Step 2: Emit partial results immediately (before diarization)
@@ -266,7 +294,8 @@ class DiarizeWorker:
                 if text and abs_start >= self.last_committed_end - 0.5:
                     partial_texts.append(text)
             if partial_texts:
-                emit({"type": "partial", "text": " ".join(partial_texts)})
+                preview = (self.accum + " " + " ".join(partial_texts)).strip()
+                emit({"type": "partial", "text": preview})
 
             # Step 3: Diarize using waveform tensor
             waveform = torch.from_numpy(pcm_f32).unsqueeze(0)  # [1, N]
@@ -275,7 +304,9 @@ class DiarizeWorker:
                 "sample_rate": SAMPLE_RATE,
             })
 
-            # Step 4: Match speakers to segments and emit final utterances
+            # Step 4: Match speakers to segments and accumulate
+            # (mirrors whisper-worker accumulation pattern to prevent word loss)
+            new_segments = []
             for seg in segments:
                 rel_start = seg.start
                 rel_end = seg.end
@@ -286,20 +317,33 @@ class DiarizeWorker:
                 if not text:
                     continue
 
-                # Dedup: skip if this segment was already committed
+                # Dedup: skip segments already committed in a previous window
                 if abs_start < self.last_committed_end - 0.5:
                     continue
 
                 speaker = dominant_speaker(diarization, rel_start, rel_end)
-
-                emit({
-                    "type": "utterance",
-                    "text": text,
-                    "speaker": speaker,
-                    "start": abs_start,
-                    "end": abs_end,
-                })
+                new_segments.append((text, speaker, abs_start, abs_end))
                 self.last_committed_end = max(self.last_committed_end, abs_end)
+
+            if new_segments:
+                self.empty_windows = 0
+                for text, speaker, abs_start, abs_end in new_segments:
+                    # Speaker changed — emit accumulated text, start fresh
+                    if speaker and speaker != self.current_speaker and self.accum:
+                        self._emit_accum()
+
+                    if not self.accum:
+                        self.accum_start = abs_start
+                    self.current_speaker = speaker or self.current_speaker
+                    self.accum = (self.accum + " " + text).strip()
+                    self.accum_end = abs_end
+            else:
+                self.empty_windows += 1
+
+            # Emit if accumulated text is long enough or silence detected
+            if self.accum and (self.empty_windows >= UTTERANCE_SILENCE
+                              or len(self.accum) >= MAX_ACCUM_CHARS):
+                self._emit_accum()
 
         except Exception as e:
             emit({"type": "error", "message": str(e)})
@@ -356,7 +400,11 @@ def main():
             worker.flush()
         elif msg_type == "shutdown":
             worker.flush()
-            time.sleep(3)  # Allow final processing thread to finish
+            # Wait for any running inference thread (max 10 s)
+            deadline = time.time() + 10
+            while worker.processing and time.time() < deadline:
+                time.sleep(0.1)
+            worker._emit_accum()
             break
 
     print("[diarize.py] Shutdown complete.", file=sys.stderr, flush=True)
