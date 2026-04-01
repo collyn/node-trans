@@ -428,12 +428,18 @@ async function stopSession(socketId) {
 // Start server
 export async function startServer(overridePort) {
   const settings = loadSettings();
-  const PORT = overridePort || process.env.PORT || settings.port || 3000;
+  const PORT = 3333;
   return new Promise((resolve) => {
     server.listen(PORT, () => {
       log.info(`Server running at http://localhost:${PORT}`);
       resolve(PORT);
     });
+  });
+}
+
+export function stopServer() {
+  return new Promise((resolve) => {
+    server.close(() => resolve());
   });
 }
 

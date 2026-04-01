@@ -201,7 +201,14 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
+  app.quit();
+});
+
+app.on("before-quit", async () => {
+  try {
+    const { stopServer } = await import("../src/server.js");
+    await stopServer();
+  } catch {
+    // Server already stopped
   }
 });
