@@ -30,24 +30,24 @@ const ffmpegDir = path.dirname(process.env.FFMPEG_PATH);
 process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
 
 // audiocap (native system audio capture) — macOS: ScreenCaptureKit, Windows: WASAPI
-if (process.platform === "darwin") {
-  if (isDev) {
-    const universalPath = path.join(__dirname, "../swift-audiocap/.build/apple/Products/Release/audiocap");
-    const singleArchPath = path.join(__dirname, "../swift-audiocap/.build/release/audiocap");
-    const fs = await import("fs");
-    process.env.AUDIOCAP_PATH = fs.existsSync(universalPath) ? universalPath : singleArchPath;
-  } else {
-    process.env.AUDIOCAP_PATH = path.join(process.resourcesPath, "audiocap", "audiocap");
-  }
-} else if (process.platform === "win32") {
-  if (isDev) {
-    const devPath = path.join(__dirname, "../wasapi-audiocap/bin/Release/net8.0/win-x64/publish/audiocap.exe");
-    const binPath = path.join(__dirname, "../audiocap-bin/win/audiocap.exe");
-    const fs = await import("fs");
-    process.env.AUDIOCAP_PATH = fs.existsSync(devPath) ? devPath : binPath;
-  } else {
-    process.env.AUDIOCAP_PATH = path.join(process.resourcesPath, "audiocap", "audiocap.exe");
-  }
+if (isDev) {
+  const { existsSync } = await import("fs");
+  const isMac = process.platform === "darwin";
+  const candidates = isMac
+    ? [
+        path.join(__dirname, "../swift-audiocap/.build/apple/Products/Release/audiocap"),
+        path.join(__dirname, "../swift-audiocap/.build/release/audiocap"),
+        path.join(__dirname, "../audiocap-bin/mac/audiocap"),
+      ]
+    : [
+        path.join(__dirname, "../wasapi-audiocap/bin/Release/net8.0/win-x64/publish/audiocap.exe"),
+        path.join(__dirname, "../audiocap-bin/win/audiocap.exe"),
+      ];
+  const found = candidates.find(existsSync);
+  if (found) process.env.AUDIOCAP_PATH = found;
+} else {
+  const binName = process.platform === "win32" ? "audiocap.exe" : "audiocap";
+  process.env.AUDIOCAP_PATH = path.join(process.resourcesPath, "audiocap", binName);
 }
 
 // Data directory: use Electron's userData path

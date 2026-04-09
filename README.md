@@ -146,19 +146,12 @@ On first use, the app downloads ~1 GB of models. Subsequent starts are ready in 
 
 ## System Audio Capture
 
-System audio capture (from Zoom, Meet, YouTube, etc.) works natively — no virtual audio drivers needed.
+System audio capture (from Zoom, Meet, YouTube, etc.) works natively — no virtual audio drivers needed. Pre-built binaries are included in the repo.
 
-**One-time setup:**
-
-```bash
-npm run setup:audiocap
-```
-
-This builds the `audiocap` binary which uses native OS APIs:
 - **macOS**: ScreenCaptureKit (requires Screen Recording permission, macOS 13+)
 - **Windows**: WASAPI loopback (no special permissions needed)
 
-The Electron app bundles `audiocap` automatically.
+> To rebuild from source: `npm run setup:audiocap` (requires Swift on macOS, .NET 8 SDK for Windows cross-compile)
 
 ---
 
