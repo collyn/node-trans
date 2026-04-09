@@ -120,14 +120,14 @@ export function startCapture(device) {
 }
 
 /**
- * Capture system audio on macOS via ScreenCaptureKit (audiocap binary).
+ * Capture system audio via native API (ScreenCaptureKit on macOS, WASAPI on Windows).
  * Returns the same interface as startCapture() — drop-in replacement for system audio.
  */
 export function startSystemCapture() {
-  const audiocapBin = process.env.AUDIOCAP_PATH || "audiocap";
+  const audiocapBin = process.env.AUDIOCAP_PATH || (IS_WIN ? "audiocap.exe" : "audiocap");
   const args = ["--sample-rate", "16000", "--channels", "1"];
 
-  log.info("Starting system capture (ScreenCaptureKit)", { bin: audiocapBin });
+  log.info("Starting system capture", { bin: audiocapBin });
 
   const proc = spawn(audiocapBin, args, {
     stdio: ["pipe", "pipe", "pipe"],
@@ -135,6 +135,7 @@ export function startSystemCapture() {
 
   let paused = false;
   let stopped = false;
+  let killTimer = null;
 
   const gate = new Transform({
     transform(chunk, enc, cb) {
@@ -168,7 +169,14 @@ export function startSystemCapture() {
       if (stopped) return;
       stopped = true;
       log.info("Stopping system capture");
-      proc.kill("SIGTERM");
+      if (IS_WIN) {
+        try { proc.stdin.write("q"); } catch {}
+        killTimer = setTimeout(() => {
+          try { proc.kill(); } catch {}
+        }, 500);
+      } else {
+        proc.kill("SIGTERM");
+      }
     },
 
     onError(callback) {
@@ -177,7 +185,8 @@ export function startSystemCapture() {
         callback(err);
       });
       proc.on("exit", (code) => {
-        if (code === 2 && !stopped) {
+        if (killTimer) { clearTimeout(killTimer); killTimer = null; }
+        if (code === 2 && !stopped && IS_MAC) {
           log.error("audiocap: Screen Recording permission denied");
           callback(new Error("SCREEN_RECORDING_PERMISSION_DENIED"));
         } else if (code && code !== 0 && !stopped) {

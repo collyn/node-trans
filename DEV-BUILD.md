@@ -4,6 +4,8 @@
 
 - **Node.js** >= 20 LTS (uses built-in `fetch` and `node --watch`; Node 22 recommended)
 - **ffmpeg**: web mode uses `ffmpeg-static` automatically; Electron bundles its own binary
+- **Swift toolchain** (macOS): required to build `audiocap` for native system audio capture
+- **.NET 8 SDK**: required to cross-compile Windows `audiocap.exe` (`brew install dotnet-sdk`)
 - **Python 3.10–3.12**: required for Local Whisper STT and speaker diarization
 
 ---
@@ -55,6 +57,7 @@ These only need to be run once:
 
 | Command | When needed |
 |---------|-------------|
+| `npm run setup:audiocap` | Build native system audio capture binaries. Builds Swift binary (macOS) + .NET binary (Windows) |
 | `npm run setup:ffmpeg` | Before building Electron for the first time (copies ffmpeg into `ffmpeg-bin/`) |
 | `npm run setup:diarize` | To enable speaker diarization (installs Python venv + pyannote.audio into `~/.node-trans/venv`) |
 
@@ -115,8 +118,11 @@ electron-builder.config.js
   npmRebuild: false        — IMPORTANT: keep false to prevent overwriting the correctly rebuilt binary
   asarUnpack               — Keeps native modules and Python scripts on the real filesystem (outside ASAR)
 
-electron/main.js           — Sets FFMPEG_PATH and adds it to PATH before importing the server
-src/server.js              — Sets FFMPEG_PATH from ffmpeg-static (web mode) and adds it to PATH
+electron/main.js           — Sets FFMPEG_PATH and AUDIOCAP_PATH, adds ffmpeg to PATH before importing the server
+src/server.js              — Sets FFMPEG_PATH from ffmpeg-static and auto-detects AUDIOCAP_PATH (web mode)
+swift-audiocap/            — Swift CLI: captures macOS system audio via ScreenCaptureKit (PCM s16le stdout)
+wasapi-audiocap/           — C# CLI: captures Windows system audio via WASAPI loopback (PCM s16le stdout)
+scripts/build-audiocap.js  — Builds audiocap binaries for both platforms (Swift on macOS, .NET cross-compile for Windows)
 src/local/whisper-session.js  — Spawns whisper-worker.py; resolves ASAR-unpacked path for Electron
 src/local/whisper-setup.js    — Creates ~/.node-trans/venv, installs openai-whisper, downloads model
 src/local/whisper-worker.py   — Persistent Python STT worker (openai-whisper, sliding window)

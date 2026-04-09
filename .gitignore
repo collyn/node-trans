@@ -10,6 +10,8 @@ release/
 ffmpeg-bin/
 audiocap-bin/
 swift-audiocap/.build/
+wasapi-audiocap/bin/
+wasapi-audiocap/obj/
 *.dmg
 *.exe
 *.msi

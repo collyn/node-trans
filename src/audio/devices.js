@@ -43,15 +43,11 @@ export function checkFfmpeg() {
   return _ffmpegP;
 }
 
-// Check if audiocap (ScreenCaptureKit) is available on macOS (cached)
+// Check if audiocap (native system audio capture) is available (cached)
 let _audiocapP = null;
-const AUDIOCAP_BIN = () => process.env.AUDIOCAP_PATH || "audiocap";
+const AUDIOCAP_BIN = () => process.env.AUDIOCAP_PATH || (IS_WIN ? "audiocap.exe" : "audiocap");
 export function checkAudiocap() {
   if (_audiocapP) return _audiocapP;
-  if (IS_WIN) {
-    _audiocapP = Promise.resolve(false);
-    return _audiocapP;
-  }
   _audiocapP = new Promise((resolve) => {
     const proc = spawn(AUDIOCAP_BIN(), ["--version"], { stdio: ["pipe", "pipe", "pipe"] });
     proc.on("error", () => resolve(false));

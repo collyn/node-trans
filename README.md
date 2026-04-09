@@ -146,12 +146,19 @@ On first use, the app downloads ~1 GB of models. Subsequent starts are ready in 
 
 ## System Audio Capture
 
-To capture audio from other apps (Zoom, Meet, YouTube, etc.), a virtual audio driver is required.
+System audio capture (from Zoom, Meet, YouTube, etc.) works natively — no virtual audio drivers needed.
 
-See **[AUDIO-CAPTURE.md](AUDIO-CAPTURE.md)** for setup instructions:
+**One-time setup:**
 
-- **macOS**: BlackHole + Aggregate Device
-- **Windows**: VB-CABLE or Stereo Mix
+```bash
+npm run setup:audiocap
+```
+
+This builds the `audiocap` binary which uses native OS APIs:
+- **macOS**: ScreenCaptureKit (requires Screen Recording permission, macOS 13+)
+- **Windows**: WASAPI loopback (no special permissions needed)
+
+The Electron app bundles `audiocap` automatically.
 
 ---
 
@@ -161,7 +168,7 @@ See **[AUDIO-CAPTURE.md](AUDIO-CAPTURE.md)** for setup instructions:
 | ------------------------------------ | -------------------------------------------------- |
 | [DEV-BUILD.md](DEV-BUILD.md)         | Development setup, build commands, troubleshooting |
 | [ARCHITECTURE.md](ARCHITECTURE.md)   | System architecture, data flow, component overview |
-| [AUDIO-CAPTURE.md](AUDIO-CAPTURE.md) | System audio capture setup (BlackHole / VB-CABLE)  |
+
 
 ---
 
@@ -172,7 +179,8 @@ See **[AUDIO-CAPTURE.md](AUDIO-CAPTURE.md)** for setup instructions:
 | Frontend            | React 19, Vite, Tailwind CSS v4, Socket.IO Client |
 | Backend             | Node.js, Express 5, Socket.IO                     |
 | Desktop             | Electron                                          |
-| Audio capture       | ffmpeg (avfoundation / dshow)                     |
+| Audio capture (mic) | ffmpeg (avfoundation / dshow)                     |
+| Audio capture (sys) | audiocap (ScreenCaptureKit on macOS, WASAPI on Windows) |
 | STT (cloud)         | Soniox API                                        |
 | STT (local)         | nodejs-whisper (whisper.cpp)                      |
 | Speaker diarization | pyannote-audio 3.1 (Python)                       |

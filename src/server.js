@@ -30,14 +30,21 @@ if (process.env.FFMPEG_PATH) {
   process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
 }
 
-// Set AUDIOCAP_PATH for macOS web dev mode (Electron sets it in main.js)
-if (!process.env.AUDIOCAP_PATH && process.platform === "darwin") {
+// Set AUDIOCAP_PATH for web dev mode (Electron sets it in main.js)
+if (!process.env.AUDIOCAP_PATH) {
   const base = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path.join(base, "../swift-audiocap/.build/apple/Products/Release/audiocap"),
-    path.join(base, "../swift-audiocap/.build/release/audiocap"),
-    path.join(base, "../audiocap-bin/mac/audiocap"),
-  ];
+  const candidates = process.platform === "darwin"
+    ? [
+        path.join(base, "../swift-audiocap/.build/apple/Products/Release/audiocap"),
+        path.join(base, "../swift-audiocap/.build/release/audiocap"),
+        path.join(base, "../audiocap-bin/mac/audiocap"),
+      ]
+    : process.platform === "win32"
+    ? [
+        path.join(base, "../wasapi-audiocap/bin/Release/net8.0/win-x64/publish/audiocap.exe"),
+        path.join(base, "../audiocap-bin/win/audiocap.exe"),
+      ]
+    : [];
   const found = candidates.find(existsSync);
   if (found) process.env.AUDIOCAP_PATH = found;
 }
@@ -120,7 +127,7 @@ io.on("connection", (socket) => {
         getHistory(), getCapture(), getDevices(),
       ]);
       const { startCapture, startSystemCapture } = captureModule;
-      const { listInputDevices } = devicesModule;
+      const { listInputDevices, checkAudiocap } = devicesModule;
 
       const settings = loadSettings();
       const engine = settings.transcriptionEngine || "soniox";
@@ -185,28 +192,12 @@ io.on("connection", (socket) => {
       // On Windows, dshow needs device name; on macOS, avfoundation uses index
       const micCaptureDev = isWin ? micDevice?.name : micIndex;
 
-      // System audio: macOS uses audiocap (ScreenCaptureKit), Windows uses loopback device
-      let systemCaptureDev = null;
-      const useAudiocap = !isWin && (audioSource === "system" || audioSource === "both");
+      // System audio: native capture via audiocap (ScreenCaptureKit on macOS, WASAPI on Windows)
+      const audiocapAvailable = await checkAudiocap();
+      const useAudiocap = audiocapAvailable && (audioSource === "system" || audioSource === "both");
 
       if ((audioSource === "system" || audioSource === "both") && !useAudiocap) {
-        // Windows: manual selection or auto-detect VB-CABLE / Stereo Mix
-        const systemIndex = settings.systemDeviceIndex;
-        if (systemIndex != null) {
-          const systemDevice = devices.find((d) => d.index === systemIndex);
-          if (systemDevice) {
-            systemCaptureDev = systemDevice.name;
-          } else {
-            emitError(socket, { key: "errSystemDeviceNotFound", params: { index: systemIndex } });
-          }
-        } else {
-          const loopback = devices.find((d) => /cable|stereo mix|virtual|vb-audio/i.test(d.name));
-          if (loopback) {
-            systemCaptureDev = loopback.name;
-          } else {
-            emitError(socket, { key: "errNoLoopbackWin" });
-          }
-        }
+        emitError(socket, { key: "errAudiocapNotFound" });
       }
 
       const deviceName = micDevice?.name || `Device ${micIndex}`;
@@ -255,7 +246,7 @@ io.on("connection", (socket) => {
       await Promise.all(sources.map(async (source) => {
         const isSystemSource = source === "system";
         const useNativeCapture = isSystemSource && useAudiocap;
-        const captureDev = isSystemSource ? systemCaptureDev : micCaptureDev;
+        const captureDev = isSystemSource ? null : micCaptureDev;
 
         if (!useNativeCapture && captureDev == null) {
           emitError(socket, { key: "errNoDevice", params: { source } });

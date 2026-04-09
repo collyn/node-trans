@@ -11,8 +11,10 @@ A real-time audio translation app. Captures audio from microphone or system outp
 ```
 Audio device (mic / system audio)
         │
+        ├── Mic: FFmpeg (avfoundation / dshow)
+        └── System: audiocap (ScreenCaptureKit on macOS, WASAPI on Windows)
+        │
         ▼
-   FFmpeg process
    PCM s16le · 16kHz · mono
         │
         ▼
@@ -72,8 +74,8 @@ Audio device (mic / system audio)
 |------|------|
 | `server.js` | Express 5 + Socket.IO. Manages sessions, orchestrates audio capture and STT. Lazy-loads heavy modules. Tracks active sessions per socket in an in-memory Map |
 | `logger.js` | Centralized structured logging with file rotation. Logs to `~/.node-trans/logs/app.log`, rotates at 10MB, mirrors to console only in dev mode |
-| `audio/capture.js` | Spawns FFmpeg, normalizes PCM into 120ms chunks via ChunkTransform, supports pause/resume via gate stream |
-| `audio/devices.js` | Lists audio devices by parsing ffmpeg output. 30-second cache. Uses `system_profiler` (macOS) or PowerShell (Windows) for output devices |
+| `audio/capture.js` | Spawns FFmpeg (mic) or audiocap (system audio), normalizes PCM into 120ms chunks via ChunkTransform, supports pause/resume via gate stream |
+| `audio/devices.js` | Lists audio devices by parsing ffmpeg output. 120-second cache. Uses `system_profiler` (macOS) or PowerShell (Windows) for output devices. Checks audiocap availability |
 | `soniox/session.js` | Soniox SDK wrapper (RealtimeUtteranceBuffer). Real-time transcription + translation + speaker diarization via cloud |
 | `local/whisper-session.js` | Offline STT. Spawns `whisper-worker.py` as a persistent subprocess; sends base64 audio via stdin JSON. Translation debouncing (500ms) for partials |
 | `local/whisper-setup.js` | Setup helper: creates `~/.node-trans/venv`, installs `faster-whisper`, downloads model via `whisper-download.py`. Supports upgrade from openai-whisper |
@@ -125,7 +127,7 @@ Audio device (mic / system audio)
 
 | File | Role |
 |------|------|
-| `main.js` | Starts the Express server internally, loads the app URL. Manages main window (1200x800) + overlay window (500x220, always-on-top, transparent, frameless). IPC bridge for overlay toggle/data/settings/drag |
+| `main.js` | Starts the Express server internally, loads the app URL. Sets FFMPEG_PATH and AUDIOCAP_PATH. Manages main window (1200x800) + overlay window (500x220, always-on-top, transparent, frameless). IPC bridge for overlay toggle/data/settings/drag |
 | `preload.js` | Exposes `window.electronAPI` to the renderer (toggleOverlay, sendOverlayData, sendOverlaySettings, onOverlayClosed) |
 | `overlay-preload.js` | Exposes `window.overlayAPI` to the overlay renderer (onData, onSettings, close, dragStart, dragMove) |
 
@@ -260,7 +262,7 @@ Socket emits "start-listening" { sessionId?, context? }
     ▼
 Resolve audio devices
     · Mic: from settings or device index 0
-    · System: from settings or auto-detect BlackHole (macOS) / VB-CABLE (Windows)
+    · System: native capture via audiocap (ScreenCaptureKit on macOS, WASAPI on Windows)
     │
     ▼
 Lazy-load STT factory (Soniox / Whisper / Diarize)
@@ -321,11 +323,11 @@ server.js caches module `import()` Promises — each heavy module (history, soni
 | Component | Required | Notes |
 |-----------|----------|-------|
 | Node.js >= 20 | Yes | Runtime |
-| ffmpeg | Yes | Audio capture |
+| ffmpeg | Yes | Microphone audio capture |
+| audiocap | Yes (for system audio) | Built via `npm run setup:audiocap`. Uses ScreenCaptureKit (macOS) / WASAPI (Windows) |
 | Python 3.10+ + faster-whisper | Only for Local Whisper | Setup via UI (Settings → Engine → Setup Whisper) |
 | pyannote.audio 3.1.1 | Only for Diarization | Setup via UI or `npm run setup:diarize` |
 | Ollama | Only for Ollama translation | `ollama serve` must be running |
 | LibreTranslate | Only for LibreTranslate | Server must be running |
-| BlackHole (macOS) | Only for system audio capture | Or configure device manually |
 | Soniox API Key | Only for Soniox engine | cloud.soniox.com |
 | HuggingFace Token | Only for Diarization | huggingface.co/settings/tokens |
