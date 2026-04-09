@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import path from "path";
+import { existsSync } from "fs";
 
 import apiRoutes from "./routes/api.js";
 import { loadSettings } from "./storage/settings.js";
@@ -29,6 +30,18 @@ if (process.env.FFMPEG_PATH) {
   process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
 }
 
+// Set AUDIOCAP_PATH for macOS web dev mode (Electron sets it in main.js)
+if (!process.env.AUDIOCAP_PATH && process.platform === "darwin") {
+  const base = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(base, "../swift-audiocap/.build/apple/Products/Release/audiocap"),
+    path.join(base, "../swift-audiocap/.build/release/audiocap"),
+    path.join(base, "../audiocap-bin/mac/audiocap"),
+  ];
+  const found = candidates.find(existsSync);
+  if (found) process.env.AUDIOCAP_PATH = found;
+}
+
 // Lazy-loaded modules — cache the Promise itself so concurrent callers share one load
 let _historyP, _sonioxP, _captureP, _whisperP, _diarizeP, _devicesP;
 
@@ -41,7 +54,7 @@ function getSonioxSession() {
   return _sonioxP;
 }
 function getCapture() {
-  if (!_captureP) _captureP = import("./audio/capture.js").then((m) => m.startCapture);
+  if (!_captureP) _captureP = import("./audio/capture.js");
   return _captureP;
 }
 function getWhisperSession() {
@@ -53,7 +66,7 @@ function getDiarizeSession() {
   return _diarizeP;
 }
 function getDevices() {
-  if (!_devicesP) _devicesP = import("./audio/devices.js").then((m) => m.listInputDevices);
+  if (!_devicesP) _devicesP = import("./audio/devices.js");
   return _devicesP;
 }
 
@@ -103,9 +116,11 @@ io.on("connection", (socket) => {
     stopSession(socket.id).catch(() => {});
 
     try {
-      const [history, startCapture, listInputDevices] = await Promise.all([
+      const [history, captureModule, devicesModule] = await Promise.all([
         getHistory(), getCapture(), getDevices(),
       ]);
+      const { startCapture, startSystemCapture } = captureModule;
+      const { listInputDevices } = devicesModule;
 
       const settings = loadSettings();
       const engine = settings.transcriptionEngine || "soniox";
@@ -170,28 +185,26 @@ io.on("connection", (socket) => {
       // On Windows, dshow needs device name; on macOS, avfoundation uses index
       const micCaptureDev = isWin ? micDevice?.name : micIndex;
 
-      // System device: use manual setting or auto-detect virtual loopback input device
+      // System audio: macOS uses audiocap (ScreenCaptureKit), Windows uses loopback device
       let systemCaptureDev = null;
-      if (audioSource === "system" || audioSource === "both") {
+      const useAudiocap = !isWin && (audioSource === "system" || audioSource === "both");
+
+      if ((audioSource === "system" || audioSource === "both") && !useAudiocap) {
+        // Windows: manual selection or auto-detect VB-CABLE / Stereo Mix
         const systemIndex = settings.systemDeviceIndex;
         if (systemIndex != null) {
-          // Manual selection from settings
           const systemDevice = devices.find((d) => d.index === systemIndex);
           if (systemDevice) {
-            systemCaptureDev = isWin ? systemDevice.name : systemDevice.index;
+            systemCaptureDev = systemDevice.name;
           } else {
             emitError(socket, { key: "errSystemDeviceNotFound", params: { index: systemIndex } });
           }
         } else {
-          // Auto-detect: macOS: BlackHole, Windows: VB-CABLE / Stereo Mix / CABLE Output
-          const loopbackPattern = isWin
-            ? /cable|stereo mix|virtual|vb-audio/i
-            : /blackhole/i;
-          const loopback = devices.find((d) => loopbackPattern.test(d.name));
+          const loopback = devices.find((d) => /cable|stereo mix|virtual|vb-audio/i.test(d.name));
           if (loopback) {
-            systemCaptureDev = isWin ? loopback.name : loopback.index;
+            systemCaptureDev = loopback.name;
           } else {
-            emitError(socket, { key: isWin ? "errNoLoopbackWin" : "errNoLoopbackMac" });
+            emitError(socket, { key: "errNoLoopbackWin" });
           }
         }
       }
@@ -240,8 +253,11 @@ io.on("connection", (socket) => {
       const createSTT = await sttFactoryP;
 
       await Promise.all(sources.map(async (source) => {
-        const captureDev = source === "mic" ? micCaptureDev : systemCaptureDev;
-        if (captureDev == null) {
+        const isSystemSource = source === "system";
+        const useNativeCapture = isSystemSource && useAudiocap;
+        const captureDev = isSystemSource ? systemCaptureDev : micCaptureDev;
+
+        if (!useNativeCapture && captureDev == null) {
           emitError(socket, { key: "errNoDevice", params: { source } });
           return;
         }
@@ -252,8 +268,15 @@ io.on("connection", (socket) => {
         let currentCapture = null;
 
         function launchCapture() {
-          currentCapture = startCapture(captureDev);
+          currentCapture = useNativeCapture
+            ? startSystemCapture()
+            : startCapture(captureDev);
           currentCapture.onError((err) => {
+            // Screen Recording permission denied — no retry, show specific error
+            if (err.message === "SCREEN_RECORDING_PERMISSION_DENIED") {
+              emitError(socket, { key: "errScreenRecordingPermission" });
+              return;
+            }
             emitError(socket, { key: "errAudioCapture", params: { source, detail: err.message } });
             // Retry if session is still active
             if (retryCount < MAX_RETRIES && activeSessions.get(socket.id) === state && !state.paused) {

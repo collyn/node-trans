@@ -29,6 +29,19 @@ if (isDev) {
 const ffmpegDir = path.dirname(process.env.FFMPEG_PATH);
 process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
 
+// audiocap (ScreenCaptureKit system audio capture) — macOS only
+if (process.platform === "darwin") {
+  if (isDev) {
+    // Universal build: .build/apple/Products/Release/, single-arch: .build/release/
+    const universalPath = path.join(__dirname, "../swift-audiocap/.build/apple/Products/Release/audiocap");
+    const singleArchPath = path.join(__dirname, "../swift-audiocap/.build/release/audiocap");
+    const fs = await import("fs");
+    process.env.AUDIOCAP_PATH = fs.existsSync(universalPath) ? universalPath : singleArchPath;
+  } else {
+    process.env.AUDIOCAP_PATH = path.join(process.resourcesPath, "audiocap", "audiocap");
+  }
+}
+
 // Data directory: use Electron's userData path
 process.env.ELECTRON_USER_DATA = app.getPath("userData");
 

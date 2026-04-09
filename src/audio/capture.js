@@ -6,6 +6,7 @@ const log = createLogger("capture");
 
 const CHUNK_SIZE = 3840; // 120ms at 16kHz mono 16-bit
 const IS_WIN = process.platform === "win32";
+const IS_MAC = process.platform === "darwin";
 
 class ChunkTransform extends Transform {
   constructor() {
@@ -112,6 +113,76 @@ export function startCapture(device) {
         if (code && code !== 0 && code !== 255 && !stopped) {
           log.error("ffmpeg exited with error", { code, device, stderr: stderrBuf.trim() });
           callback(new Error(`ffmpeg exited with code ${code}`));
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Capture system audio on macOS via ScreenCaptureKit (audiocap binary).
+ * Returns the same interface as startCapture() — drop-in replacement for system audio.
+ */
+export function startSystemCapture() {
+  const audiocapBin = process.env.AUDIOCAP_PATH || "audiocap";
+  const args = ["--sample-rate", "16000", "--channels", "1"];
+
+  log.info("Starting system capture (ScreenCaptureKit)", { bin: audiocapBin });
+
+  const proc = spawn(audiocapBin, args, {
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let paused = false;
+  let stopped = false;
+
+  const gate = new Transform({
+    transform(chunk, enc, cb) {
+      if (!paused) this.push(chunk);
+      cb();
+    },
+  });
+
+  const chunker = new ChunkTransform();
+  proc.stdout.pipe(gate).pipe(chunker);
+
+  let stderrBuf = "";
+  proc.stderr.on("data", (d) => {
+    stderrBuf += d.toString("utf8");
+    if (stderrBuf.length > 8192) stderrBuf = stderrBuf.slice(-8192);
+  });
+
+  return {
+    stream: chunker,
+    process: proc,
+
+    pause() {
+      paused = true;
+    },
+
+    resume() {
+      paused = false;
+    },
+
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      log.info("Stopping system capture");
+      proc.kill("SIGTERM");
+    },
+
+    onError(callback) {
+      proc.on("error", (err) => {
+        log.error("audiocap process error", err);
+        callback(err);
+      });
+      proc.on("exit", (code) => {
+        if (code === 2 && !stopped) {
+          log.error("audiocap: Screen Recording permission denied");
+          callback(new Error("SCREEN_RECORDING_PERMISSION_DENIED"));
+        } else if (code && code !== 0 && !stopped) {
+          log.error("audiocap exited with error", { code, stderr: stderrBuf.trim() });
+          callback(new Error(`audiocap exited with code ${code}`));
         }
       });
     },

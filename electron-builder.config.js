@@ -33,6 +33,11 @@ export default {
       to: "ffmpeg",
       filter: ["**/*"],
     },
+    {
+      from: "audiocap-bin/${os}",
+      to: "audiocap",
+      filter: ["**/*"],
+    },
   ],
   icon: "build/icon",
   mac: {
@@ -44,6 +49,8 @@ export default {
     extendInfo: {
       NSMicrophoneUsageDescription:
         "Node Trans needs microphone access to capture and translate audio.",
+      NSScreenCaptureUsageDescription:
+        "Node Trans needs screen recording permission to capture system audio for translation.",
     },
   },
   win: {

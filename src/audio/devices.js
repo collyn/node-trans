@@ -43,16 +43,34 @@ export function checkFfmpeg() {
   return _ffmpegP;
 }
 
-// Combined: returns { input: [...], output: [...], ffmpegAvailable: bool }
+// Check if audiocap (ScreenCaptureKit) is available on macOS (cached)
+let _audiocapP = null;
+const AUDIOCAP_BIN = () => process.env.AUDIOCAP_PATH || "audiocap";
+export function checkAudiocap() {
+  if (_audiocapP) return _audiocapP;
+  if (IS_WIN) {
+    _audiocapP = Promise.resolve(false);
+    return _audiocapP;
+  }
+  _audiocapP = new Promise((resolve) => {
+    const proc = spawn(AUDIOCAP_BIN(), ["--version"], { stdio: ["pipe", "pipe", "pipe"] });
+    proc.on("error", () => resolve(false));
+    proc.on("close", (code) => resolve(code === 0));
+  });
+  return _audiocapP;
+}
+
+// Combined: returns { input, output, ffmpegAvailable, audiocapAvailable }
 // Runs all checks in parallel for faster startup
 export async function listAllDevices() {
-  const [ffmpegAvailable, input, output] = await Promise.all([
+  const [ffmpegAvailable, audiocapAvailable, input, output] = await Promise.all([
     checkFfmpeg(),
+    checkAudiocap(),
     listInputDevices().catch(() => []),
     listOutputDevices().catch(() => []),
   ]);
-  if (!ffmpegAvailable) return { input: [], output: [], ffmpegAvailable: false };
-  return { input, output, ffmpegAvailable: true };
+  if (!ffmpegAvailable) return { input: [], output: [], ffmpegAvailable: false, audiocapAvailable };
+  return { input, output, ffmpegAvailable: true, audiocapAvailable };
 }
 
 // ─── macOS ───────────────────────────────────────────────

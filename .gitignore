@@ -8,6 +8,8 @@ spec/
 # Electron
 release/
 ffmpeg-bin/
+audiocap-bin/
+swift-audiocap/.build/
 *.dmg
 *.exe
 *.msi

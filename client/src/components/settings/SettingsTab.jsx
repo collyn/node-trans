@@ -31,6 +31,7 @@ export default function SettingsModal({ onClose }) {
   const [systemDeviceIndex, setSystemDeviceIndex] = useState("");
   const [devices, setDevices] = useState([]);
   const [ffmpegAvailable, setFfmpegAvailable] = useState(true);
+  const [audiocapAvailable, setAudiocapAvailable] = useState(false);
   const [sonioxApiKey, setSonioxApiKey] = useState("");
   const [transcriptionEngine, setTranscriptionEngine] = useState("soniox");
   const [whisperModel, setWhisperModel] = useState("base");
@@ -89,6 +90,7 @@ export default function SettingsModal({ onClose }) {
     fetchDevices().then((devData) => {
       setDevices(devData.input || []);
       setFfmpegAvailable(devData.ffmpegAvailable !== false);
+      setAudiocapAvailable(!!devData.audiocapAvailable);
     }).catch(() => {});
   }, []);
 
@@ -373,12 +375,16 @@ export default function SettingsModal({ onClose }) {
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className={labelCls}>{t("systemDevice")}</label>
-                    <select className={selectCls} value={systemDeviceIndex} onChange={(e) => setSystemDeviceIndex(e.target.value)}>
-                      <option value="">{t("autoDetect")}</option>
-                      {devices.map((d) => (
-                        <option key={d.index} value={String(d.index)}>[{d.index}] {d.name}</option>
-                      ))}
-                    </select>
+                    {audiocapAvailable ? (
+                      <p className="text-xs text-green-400 mt-1">{t("nativeSystemAudio")}</p>
+                    ) : (
+                      <select className={selectCls} value={systemDeviceIndex} onChange={(e) => setSystemDeviceIndex(e.target.value)}>
+                        <option value="">{t("autoDetect")}</option>
+                        {devices.map((d) => (
+                          <option key={d.index} value={String(d.index)}>[{d.index}] {d.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div>
                     <label className={labelCls}>{t("sourceLang")}</label>
