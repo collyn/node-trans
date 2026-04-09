@@ -15,4 +15,7 @@ wasapi-audiocap/obj/
 *.exe
 *.msi
 
+# Allow pre-built audiocap binaries
+!audiocap-bin/**
+
 .DS_Store
