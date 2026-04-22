@@ -40,8 +40,13 @@ export default {
     },
   ],
   icon: "build/icon",
+  publish: {
+    provider: "github",
+    owner: "thainph",
+    repo: "node-trans",
+  },
   mac: {
-    target: ["dir", "zip"],
+    target: ["dmg", "zip"],
     category: "public.app-category.productivity",
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",

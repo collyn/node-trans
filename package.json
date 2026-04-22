@@ -1,6 +1,6 @@
 {
   "name": "node-trans",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Real-time audio translation app using Soniox API",
   "type": "module",
   "main": "electron/main.js",
@@ -30,6 +30,7 @@
   "license": "ISC",
   "dependencies": {
     "@soniox/node": "^1.1.2",
+    "electron-updater": "^6.3.9",
     "better-sqlite3": "^12.8.0",
     "compression": "^1.8.1",
     "dotenv": "^17.3.1",
