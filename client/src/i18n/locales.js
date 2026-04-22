@@ -42,6 +42,7 @@ export const en = {
   // Transcript
   pressResume: 'Press "Resume" to continue this session',
   pressStart: 'Press "Start" to listen and translate audio',
+  newMessages: "New messages",
 
   // Session info
   started: "Started",
@@ -269,6 +270,7 @@ export const vi = {
   // Transcript
   pressResume: 'Nh\u1EA5n "Ti\u1EBFp t\u1EE5c" \u0111\u1EC3 ti\u1EBFp t\u1EE5c phi\u00EAn n\u00E0y',
   pressStart: 'Nh\u1EA5n "B\u1EAFt \u0111\u1EA7u" \u0111\u1EC3 nghe v\u00E0 d\u1ECBch \u00E2m thanh',
+  newMessages: "Tin mới",
 
   // Session info
   started: "B\u1EAFt \u0111\u1EA7u",

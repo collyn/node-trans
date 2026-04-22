@@ -1,4 +1,4 @@
-import { useRef, useEffect, memo } from "react";
+import { useRef, useEffect, useState, memo } from "react";
 import { useSession } from "../../context/SocketContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { getSpeakerIndex } from "../../utils/speakerColors";
@@ -8,19 +8,40 @@ export default function Transcript({ utterances, speakerColorMap, speakerAliases
   const { selectedSessionId } = useSession();
   const { t } = useI18n();
   const ref = useRef(null);
+  const isAtBottom = useRef(true);
+  const [showJumpBtn, setShowJumpBtn] = useState(false);
   const partialEntries = Object.entries(partialResults);
   const hasContent = utterances.length > 0 || partialEntries.some(([, p]) => p.originalText);
 
+  function handleScroll() {
+    const el = ref.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    isAtBottom.current = atBottom;
+    if (atBottom) setShowJumpBtn(false);
+  }
+
   useEffect(() => {
-    if (ref.current) {
+    if (!ref.current) return;
+    if (isAtBottom.current) {
       ref.current.scrollTop = ref.current.scrollHeight;
+    } else {
+      setShowJumpBtn(true);
     }
   }, [utterances.length, partialResults]);
 
+  function jumpToBottom() {
+    if (!ref.current) return;
+    ref.current.scrollTop = ref.current.scrollHeight;
+    isAtBottom.current = true;
+    setShowJumpBtn(false);
+  }
+
   return (
     <div
-      className="flex-1 overflow-y-auto p-4 bg-white/60 dark:bg-[#0b0d18]/60 backdrop-blur-md rounded-2xl border border-gray-200/50 dark:border-indigo-500/10 mt-2 shadow-sm"
+      className="relative flex-1 overflow-y-auto p-4 bg-white/60 dark:bg-[#0b0d18]/60 backdrop-blur-md rounded-2xl border border-gray-200/50 dark:border-indigo-500/10 mt-2 shadow-sm"
       ref={ref}
+      onScroll={handleScroll}
     >
       {!hasContent ? (
         <div className="text-gray-300 dark:text-gray-700 text-center py-15 text-sm">
@@ -42,6 +63,14 @@ export default function Transcript({ utterances, speakerColorMap, speakerAliases
             ) : null
           )}
         </>
+      )}
+      {showJumpBtn && (
+        <button
+          onClick={jumpToBottom}
+          className="sticky bottom-2 left-full -translate-x-full flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-500 text-white text-xs font-medium shadow-lg hover:bg-indigo-600 hover:scale-105 hover:shadow-xl active:scale-95 transition-all duration-150 cursor-pointer"
+        >
+          ↓ {t("newMessages")}
+        </button>
       )}
     </div>
   );

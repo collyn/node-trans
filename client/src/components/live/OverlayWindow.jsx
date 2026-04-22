@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { useSocketActions, useTranscript, useUI } from "../../context/SocketContext";
 import useDraggable from "../../hooks/useDraggable";
 
@@ -11,6 +11,8 @@ export default function OverlayWindow() {
     y: window.innerHeight - 260,
   });
   const scrollRef = useRef(null);
+  const isAtBottom = useRef(true);
+  const [showJumpBtn, setShowJumpBtn] = useState(false);
 
   const finalOn = s.finalContent !== "off";
   const partialOn = s.partialContent !== "off";
@@ -23,9 +25,27 @@ export default function OverlayWindow() {
   const visibleUtterances = finalOn ? utterances.slice(-s.maxLines) : [];
   const visiblePartials = partialOn ? partialEntries.filter(([, p]) => p.translatedText || p.originalText) : [];
 
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    isAtBottom.current = atBottom;
+    if (atBottom) setShowJumpBtn(false);
+  }
+
+  function jumpToBottom() {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    isAtBottom.current = true;
+    setShowJumpBtn(false);
+  }
+
   useEffect(() => {
-    if (scrollRef.current) {
+    if (!scrollRef.current) return;
+    if (isAtBottom.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    } else {
+      setShowJumpBtn(true);
     }
   }, [utterances.length, partialResults]);
 
@@ -100,11 +120,13 @@ export default function OverlayWindow() {
       <div
         ref={scrollRef}
         style={{
+          position: "relative",
           padding: "8px 12px",
           maxHeight: 200,
           overflowY: "auto",
           overflowX: "hidden",
         }}
+        onScroll={handleScroll}
         onPointerDown={(e) => e.stopPropagation()}
       >
         {visibleUtterances.length === 0 && visiblePartials.length === 0 && (
@@ -144,6 +166,44 @@ export default function OverlayWindow() {
             )}
           </div>
         ))}
+        {showJumpBtn && (
+          <button
+            onClick={jumpToBottom}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(79,70,229,1)";
+              e.currentTarget.style.transform = "scale(1.07)";
+              e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.4)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "rgba(99,102,241,0.9)";
+              e.currentTarget.style.transform = "scale(1)";
+              e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
+            }}
+            onMouseDown={(e) => { e.currentTarget.style.transform = "scale(0.95)"; }}
+            onMouseUp={(e) => { e.currentTarget.style.transform = "scale(1.07)"; }}
+            style={{
+              position: "sticky",
+              bottom: 4,
+              float: "right",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "3px 10px",
+              borderRadius: 999,
+              border: "none",
+              background: "rgba(99,102,241,0.9)",
+              color: "#fff",
+              fontSize: "0.7rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+              transition: "background 0.15s, transform 0.1s, box-shadow 0.15s",
+            }}
+          >
+            ↓ New
+          </button>
+        )}
       </div>
     </div>
   );
