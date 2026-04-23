@@ -31,6 +31,7 @@ export default function SettingsModal({ onClose }) {
   const [systemDeviceIndex, setSystemDeviceIndex] = useState("");
   const [devices, setDevices] = useState([]);
   const [ffmpegAvailable, setFfmpegAvailable] = useState(true);
+  const [audiocapAvailable, setAudiocapAvailable] = useState(false);
   const [sonioxApiKey, setSonioxApiKey] = useState("");
   const [transcriptionEngine, setTranscriptionEngine] = useState("soniox");
   const [whisperModel, setWhisperModel] = useState("base");
@@ -89,6 +90,7 @@ export default function SettingsModal({ onClose }) {
     fetchDevices().then((devData) => {
       setDevices(devData.input || []);
       setFfmpegAvailable(devData.ffmpegAvailable !== false);
+      setAudiocapAvailable(!!devData.audiocapAvailable);
     }).catch(() => {});
   }, []);
 
@@ -340,7 +342,7 @@ export default function SettingsModal({ onClose }) {
               </div>
 
               {showMic && (
-                <div className="grid grid-cols-3 gap-4">
+                <>
                   <div>
                     <label className={labelCls}>{t("micDevice")}</label>
                     <select className={selectCls} value={micDeviceIndex} onChange={(e) => setMicDeviceIndex(e.target.value)}>
@@ -350,38 +352,31 @@ export default function SettingsModal({ onClose }) {
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className={labelCls}>{t("sourceLang")}</label>
-                    <select className={selectCls} value={micWhisperLanguage} onChange={(e) => setMicWhisperLanguage(e.target.value)}>
-                      <option value="auto">{t("autoDetect")}</option>
-                      {LANGUAGE_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelCls}>{t("micSourceLang")}</label>
+                      <select className={selectCls} value={micWhisperLanguage} onChange={(e) => setMicWhisperLanguage(e.target.value)}>
+                        <option value="auto">{t("autoDetect")}</option>
+                        {LANGUAGE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelCls}>{t("micTargetLang")}</label>
+                      <select className={selectCls} value={micTargetLanguage} onChange={(e) => setMicTargetLanguage(e.target.value)}>
+                        {LANGUAGE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label className={labelCls}>{t("targetLanguage")}</label>
-                    <select className={selectCls} value={micTargetLanguage} onChange={(e) => setMicTargetLanguage(e.target.value)}>
-                      {LANGUAGE_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                </>
               )}
               {showSystem && (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className={labelCls}>{t("systemDevice")}</label>
-                    <select className={selectCls} value={systemDeviceIndex} onChange={(e) => setSystemDeviceIndex(e.target.value)}>
-                      <option value="">{t("autoDetect")}</option>
-                      {devices.map((d) => (
-                        <option key={d.index} value={String(d.index)}>[{d.index}] {d.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelCls}>{t("sourceLang")}</label>
+                    <label className={labelCls}>{t("sysSourceLang")}</label>
                     <select className={selectCls} value={systemWhisperLanguage} onChange={(e) => setSystemWhisperLanguage(e.target.value)}>
                       <option value="auto">{t("autoDetect")}</option>
                       {LANGUAGE_OPTIONS.map((o) => (
@@ -390,7 +385,7 @@ export default function SettingsModal({ onClose }) {
                     </select>
                   </div>
                   <div>
-                    <label className={labelCls}>{t("targetLanguage")}</label>
+                    <label className={labelCls}>{t("sysTargetLang")}</label>
                     <select className={selectCls} value={systemTargetLanguage} onChange={(e) => setSystemTargetLanguage(e.target.value)}>
                       {LANGUAGE_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>{o.label}</option>

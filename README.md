@@ -156,13 +156,14 @@ On first use, the app downloads ~1 GB of models. Subsequent starts are ready in 
 
 ## System Audio Capture
 
-To capture audio from other apps (Zoom, Meet, YouTube, etc.), a virtual audio driver is required.
+System audio capture (from Zoom, Meet, YouTube, etc.) works natively — no virtual audio drivers needed. Pre-built binaries are included in the repo.
 
-See **[AUDIO-CAPTURE.md](AUDIO-CAPTURE.md)** for setup instructions:
+- **macOS**: ScreenCaptureKit (requires Screen Recording permission, macOS 13+)
+- **Windows**: WASAPI loopback (no special permissions needed)
 
-- **macOS**: BlackHole + Aggregate Device
-- **Windows**: VB-CABLE or Stereo Mix
-- **Linux**: PulseAudio / PipeWire monitor sources
+- **Linux**: PulseAudio / PipeWire monitor sources (via ffmpeg)
+
+> To rebuild from source: `npm run setup:audiocap` (requires Swift on macOS, .NET 8 SDK for Windows cross-compile)
 
 ---
 
@@ -172,7 +173,7 @@ See **[AUDIO-CAPTURE.md](AUDIO-CAPTURE.md)** for setup instructions:
 | ------------------------------------ | -------------------------------------------------- |
 | [DEV-BUILD.md](DEV-BUILD.md)         | Development setup, build commands, troubleshooting |
 | [ARCHITECTURE.md](ARCHITECTURE.md)   | System architecture, data flow, component overview |
-| [AUDIO-CAPTURE.md](AUDIO-CAPTURE.md) | System audio capture setup (BlackHole / VB-CABLE)  |
+
 
 ---
 
@@ -183,7 +184,8 @@ See **[AUDIO-CAPTURE.md](AUDIO-CAPTURE.md)** for setup instructions:
 | Frontend            | React 19, Vite, Tailwind CSS v4, Socket.IO Client |
 | Backend             | Node.js, Express 5, Socket.IO                     |
 | Desktop             | Electron                                          |
-| Audio capture       | ffmpeg (avfoundation / dshow / pulse)             |
+| Audio capture (mic) | ffmpeg (avfoundation / dshow / pulse)              |
+| Audio capture (sys) | audiocap (macOS / Windows), ffmpeg+pulse (Linux)   |
 | STT (cloud)         | Soniox API                                        |
 | STT (local)         | nodejs-whisper (whisper.cpp)                      |
 | Speaker diarization | pyannote-audio 3.1 (Python)                       |

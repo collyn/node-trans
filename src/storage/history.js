@@ -55,6 +55,8 @@ export function getDb() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_utterances_session ON utterances(session_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_utterances_session_time ON utterances(session_id, timestamp ASC);
   `);
 
   // Migrate: add title column if missing

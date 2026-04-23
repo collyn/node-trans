@@ -1,4 +1,4 @@
-import { useSocket } from "../context/SocketContext";
+import { useUI } from "../context/SocketContext";
 import { useI18n } from "../i18n/I18nContext";
 
 const base = "text-xs px-3.5 py-1.5 rounded-full font-medium transition-all duration-300";
@@ -11,10 +11,10 @@ const variants = {
 };
 
 export default function StatusBar() {
-  const { state } = useSocket();
+  const { statusKey, statusParams, statusClass } = useUI();
   const { t } = useI18n();
 
-  const text = state.statusKey ? t(state.statusKey, state.statusParams) : (state.statusText || "");
+  const text = statusKey ? t(statusKey, statusParams) : "";
 
-  return <div className={variants[state.statusClass] || variants[""]}>{text}</div>;
+  return <div className={variants[statusClass] || variants[""]}>{text}</div>;
 }

@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import path from "path";
+import { existsSync } from "fs";
 
 import apiRoutes from "./routes/api.js";
 import { loadSettings } from "./storage/settings.js";
@@ -29,6 +30,25 @@ if (process.env.FFMPEG_PATH) {
   process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
 }
 
+// Set AUDIOCAP_PATH for web dev mode (Electron sets it in main.js)
+if (!process.env.AUDIOCAP_PATH) {
+  const base = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = process.platform === "darwin"
+    ? [
+        path.join(base, "../swift-audiocap/.build/apple/Products/Release/audiocap"),
+        path.join(base, "../swift-audiocap/.build/release/audiocap"),
+        path.join(base, "../audiocap-bin/mac/audiocap"),
+      ]
+    : process.platform === "win32"
+    ? [
+        path.join(base, "../wasapi-audiocap/bin/Release/net8.0/win-x64/publish/audiocap.exe"),
+        path.join(base, "../audiocap-bin/win/audiocap.exe"),
+      ]
+    : [];
+  const found = candidates.find(existsSync);
+  if (found) process.env.AUDIOCAP_PATH = found;
+}
+
 // Lazy-loaded modules — cache the Promise itself so concurrent callers share one load
 let _historyP, _sonioxP, _captureP, _whisperP, _diarizeP, _devicesP;
 
@@ -41,7 +61,7 @@ function getSonioxSession() {
   return _sonioxP;
 }
 function getCapture() {
-  if (!_captureP) _captureP = import("./audio/capture.js").then((m) => m.startCapture);
+  if (!_captureP) _captureP = import("./audio/capture.js");
   return _captureP;
 }
 function getWhisperSession() {
@@ -53,7 +73,7 @@ function getDiarizeSession() {
   return _diarizeP;
 }
 function getDevices() {
-  if (!_devicesP) _devicesP = import("./audio/devices.js").then((m) => m.listInputDevices);
+  if (!_devicesP) _devicesP = import("./audio/devices.js");
   return _devicesP;
 }
 
@@ -76,6 +96,18 @@ app.use("/api", apiRoutes);
 
 // Active sessions per socket
 const activeSessions = new Map();
+const SESSION_TTL = 4 * 60 * 60 * 1000; // 4 hours max session
+
+// Periodic cleanup of stale sessions (safety net for dropped connections)
+const cleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [socketId, state] of activeSessions) {
+    if (state.startedAt && now - state.startedAt > SESSION_TTL) {
+      log.warn("Cleaning up stale session", { socketId, sessionId: state.dbSessionId });
+      stopSession(socketId).catch(() => {});
+    }
+  }
+}, 60_000);
 
 // Log and emit an error event to the client in one call
 function emitError(socket, payload) {
@@ -91,9 +123,11 @@ io.on("connection", (socket) => {
     stopSession(socket.id).catch(() => {});
 
     try {
-      const [history, startCapture, listInputDevices] = await Promise.all([
+      const [history, captureModule, devicesModule] = await Promise.all([
         getHistory(), getCapture(), getDevices(),
       ]);
+      const { startCapture, startSystemCapture } = captureModule;
+      const { listInputDevices, checkAudiocap } = devicesModule;
 
       const settings = loadSettings();
       const engine = settings.transcriptionEngine || "soniox";
@@ -159,33 +193,35 @@ io.on("connection", (socket) => {
       // On Windows/Linux, capture needs device name; on macOS, avfoundation uses index
       const micCaptureDev = (isWin || isLinux) ? micDevice?.name : micIndex;
 
-      // System device: use manual setting or auto-detect virtual loopback input device
+      // System audio: native capture via audiocap (ScreenCaptureKit on macOS, WASAPI on Windows)
+      // On Linux, audiocap is not available — fall back to ffmpeg + PulseAudio monitor source
+      const audiocapAvailable = !isLinux && await checkAudiocap();
+      const useAudiocap = audiocapAvailable && (audioSource === "system" || audioSource === "both");
+
+      // Linux fallback: auto-detect PulseAudio monitor loopback device
       let systemCaptureDev = null;
-      if (audioSource === "system" || audioSource === "both") {
+      if (isLinux && (audioSource === "system" || audioSource === "both")) {
         const systemIndex = settings.systemDeviceIndex;
         if (systemIndex != null) {
-          // Manual selection from settings
           const systemDevice = devices.find((d) => d.index === systemIndex);
           if (systemDevice) {
-            systemCaptureDev = (isWin || isLinux) ? systemDevice.name : systemDevice.index;
+            systemCaptureDev = systemDevice.name;
           } else {
             emitError(socket, { key: "errSystemDeviceNotFound", params: { index: systemIndex } });
           }
         } else {
-          // Auto-detect: macOS: BlackHole, Windows: VB-CABLE / Stereo Mix, Linux: PulseAudio monitor
-          const loopbackPattern = isLinux
-            ? /\.monitor$/i
-            : isWin
-            ? /cable|stereo mix|virtual|vb-audio/i
-            : /blackhole/i;
-          const loopback = devices.find((d) => loopbackPattern.test(d.name));
+          // Auto-detect PulseAudio monitor source
+          const loopback = devices.find((d) => /\.monitor$/i.test(d.name));
           if (loopback) {
-            systemCaptureDev = (isWin || isLinux) ? loopback.name : loopback.index;
+            systemCaptureDev = loopback.name;
           } else {
-            const errKey = isLinux ? "errNoLoopbackLinux" : isWin ? "errNoLoopbackWin" : "errNoLoopbackMac";
-            emitError(socket, { key: errKey });
+            emitError(socket, { key: "errNoLoopbackLinux" });
           }
         }
+      }
+
+      if ((audioSource === "system" || audioSource === "both") && !useAudiocap && !isLinux) {
+        emitError(socket, { key: "errAudiocapNotFound" });
       }
 
       const deviceName = micDevice?.name || `Device ${micIndex}`;
@@ -217,6 +253,8 @@ io.on("connection", (socket) => {
         paused: false,
         captures: [],
         sttSessions: [],
+        partialTimers: [],
+        startedAt: Date.now(),
       };
 
       const sources = audioSource === "both"
@@ -230,17 +268,53 @@ io.on("connection", (socket) => {
       const createSTT = await sttFactoryP;
 
       await Promise.all(sources.map(async (source) => {
-        const captureDev = source === "mic" ? micCaptureDev : systemCaptureDev;
-        if (captureDev == null) {
+        const isSystemSource = source === "system";
+        const useNativeCapture = isSystemSource && useAudiocap;
+        // On Linux, system source uses ffmpeg+pulse with monitor device
+        const captureDev = isSystemSource
+          ? (isLinux ? systemCaptureDev : null)
+          : micCaptureDev;
+
+        if (!useNativeCapture && captureDev == null) {
           emitError(socket, { key: "errNoDevice", params: { source } });
           return;
         }
 
-        // Start audio capture
-        const capture = startCapture(captureDev);
-        capture.onError((err) => {
-          emitError(socket, { key: "errAudioCapture", params: { source, detail: err.message } });
-        });
+        // Start audio capture with retry on crash
+        let retryCount = 0;
+        const MAX_RETRIES = 3;
+        let currentCapture = null;
+
+        function launchCapture() {
+          currentCapture = useNativeCapture
+            ? startSystemCapture()
+            : startCapture(captureDev);
+          currentCapture.onError((err) => {
+            // Screen Recording permission denied — no retry, show specific error
+            if (err.message === "SCREEN_RECORDING_PERMISSION_DENIED") {
+              emitError(socket, { key: "errScreenRecordingPermission" });
+              return;
+            }
+            emitError(socket, { key: "errAudioCapture", params: { source, detail: err.message } });
+            // Retry if session is still active
+            if (retryCount < MAX_RETRIES && activeSessions.get(socket.id) === state && !state.paused) {
+              retryCount++;
+              log.warn(`Capture crashed, retrying (${retryCount}/${MAX_RETRIES})`, { device: captureDev, source });
+              setTimeout(() => {
+                if (activeSessions.get(socket.id) === state) {
+                  launchCapture();
+                  // Re-pipe to STT
+                  currentCapture.stream.on("data", (chunk) => stt.sendAudio(chunk));
+                  state.captures = state.captures.filter((c) => c !== currentCapture);
+                  state.captures.push(currentCapture);
+                }
+              }, 1000 * retryCount);
+            }
+          });
+          return currentCapture;
+        }
+
+        const capture = launchCapture();
 
         // Create STT session
         const sourceTargetLang = source === "mic" ? micTargetLanguage : systemTargetLanguage;
@@ -273,9 +347,20 @@ io.on("connection", (socket) => {
           return { ...obj, speaker: `${source}:${obj.speaker}` };
         };
 
+        // Batch partial results — flush at most every 100ms to reduce message overhead
+        let pendingPartial = null;
+        let partialTimer = null;
         stt.onPartial((partial) => {
-          socket.emit("partial-result", { source, ...prefixSpeaker(partial) });
+          pendingPartial = { source, ...prefixSpeaker(partial) };
+          if (!partialTimer) {
+            partialTimer = setTimeout(() => {
+              if (pendingPartial) socket.emit("partial-result", pendingPartial);
+              pendingPartial = null;
+              partialTimer = null;
+            }, 100);
+          }
         });
+        state.partialTimers.push(() => { clearTimeout(partialTimer); partialTimer = null; });
 
         stt.onUtterance((utterance) => {
           const prefixed = prefixSpeaker(utterance);
@@ -367,6 +452,9 @@ async function stopSession(socketId) {
 
   log.info("Stopping session", { socketId, sessionId: state.dbSessionId });
 
+  // Clear batched partial timers
+  for (const clearTimer of state.partialTimers || []) clearTimer();
+
   for (const capture of state.captures) {
     capture.stop();
   }
@@ -381,7 +469,7 @@ async function stopSession(socketId) {
 // Start server
 export async function startServer(overridePort) {
   const settings = loadSettings();
-  const PORT = overridePort || process.env.PORT || settings.port || 3000;
+  const PORT = 3333;
   return new Promise((resolve) => {
     server.listen(PORT, () => {
       log.info(`Server running at http://localhost:${PORT}`);
@@ -389,6 +477,22 @@ export async function startServer(overridePort) {
     });
   });
 }
+
+export function stopServer() {
+  return new Promise((resolve) => {
+    server.close(() => resolve());
+  });
+}
+
+// Graceful shutdown — clean up all active sessions and timers
+async function shutdown() {
+  clearInterval(cleanupInterval);
+  const stops = [...activeSessions.keys()].map((id) => stopSession(id).catch(() => {}));
+  await Promise.all(stops);
+  server.close();
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
 
 // Auto-start when running directly (not via Electron)
 if (!process.env.ELECTRON) {

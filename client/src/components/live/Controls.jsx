@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useSocket } from "../../context/SocketContext";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { useSocketActions, useSession, useUI } from "../../context/SocketContext";
 import { useI18n } from "../../i18n/I18nContext";
 import { deleteSession, renameSession, getExportUrl, fetchSettings, saveSettings } from "../../utils/api";
 import { CONTEXT_PRESETS, LANGUAGE_OPTIONS } from "../../utils/constants";
@@ -7,6 +7,23 @@ import { ConfirmDialog, PromptDialog } from "../Modal";
 
 const btnBase = "px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 cursor-pointer border-none whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 text-white";
 const btnAction = "bg-transparent border-none cursor-pointer text-sm px-2 py-1 rounded-lg transition-all duration-200 hover:bg-gray-100/60 dark:hover:bg-white/5 active:scale-95 text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300";
+const sCls = "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded-lg text-xs outline-none cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-colors w-full";
+const arrowCls = "text-gray-300 dark:text-gray-600 text-xs text-center";
+
+const LangRow = memo(function LangRow({ sourceVal, onSource, targetVal, onTarget, disabled }) {
+  return (
+    <>
+      <select className={sCls} value={sourceVal} onChange={onSource} disabled={disabled}>
+        <option value="auto">Auto</option>
+        {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <span className={arrowCls}>→</span>
+      <select className={sCls} value={targetVal} onChange={onTarget} disabled={disabled}>
+        {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </>
+  );
+});
 
 function formatDuration(ms) {
   const totalSec = Math.floor(ms / 1000);
@@ -18,9 +35,10 @@ function formatDuration(ms) {
 }
 
 export default function Controls() {
-  const { socket, state, dispatch } = useSocket();
+  const { socket, dispatch } = useSocketActions();
+  const { isListening, isPaused, pendingAction, selectedSessionId, selectedSessionData } = useSession();
+  const { listeningSince, pausedElapsed } = useUI();
   const { t } = useI18n();
-  const { isListening, isPaused, pendingAction, listeningSince, pausedElapsed } = state;
 
   const [elapsed, setElapsed] = useState(0);
   const [renameModal, setRenameModal] = useState(null);
@@ -49,7 +67,7 @@ export default function Controls() {
         setMicTargetLang(s.micTargetLanguage || defTarget);
         setSysSourceLang(s.systemWhisperLanguage || "auto");
         setSysTargetLang(s.systemTargetLanguage || defTarget);
-        if (!state.selectedSessionId) {
+        if (!selectedSessionId) {
           setContextPreset(defaultCtx.current.preset);
           setCustomContext(defaultCtx.current.custom);
         }
@@ -75,7 +93,7 @@ export default function Controls() {
   }, [isListening, listeningSince, pausedElapsed]);
 
   useEffect(() => {
-    const selected = state.selectedSessionData;
+    const selected = selectedSessionData;
     if (selected && selected.context) {
       const preset = CONTEXT_PRESETS.find((p) => p.value !== "custom" && p.text === selected.context);
       if (preset) {
@@ -89,38 +107,38 @@ export default function Controls() {
       setContextPreset(defaultCtx.current.preset);
       setCustomContext(defaultCtx.current.custom);
     }
-  }, [state.selectedSessionId, state.selectedSessionData]);
+  }, [selectedSessionId, selectedSessionData]);
 
-  const activeContext = () => {
+  const activeContext = useCallback(() => {
     if (contextPreset === "custom") {
       return customContext.trim() || null;
     }
     const preset = CONTEXT_PRESETS.find((p) => p.value === contextPreset);
     return preset && preset.text ? preset.text : null;
-  };
+  }, [contextPreset, customContext]);
 
-  const emit = (event, payload = {}) => {
+  const emit = useCallback((event, payload = {}) => {
     if (pendingAction) return;
     dispatch({ type: "SET_PENDING" });
     socket.emit(event, payload);
-  };
+  }, [pendingAction, dispatch, socket]);
 
-  const handleToggle = () => {
+  const handleToggle = useCallback(() => {
     if (pendingAction) return;
     dispatch({ type: "SET_PENDING" });
     const context = activeContext();
     if (isListening) {
       socket.emit("stop-listening");
-    } else if (state.selectedSessionId) {
+    } else if (selectedSessionId) {
       dispatch({ type: "SET_CONTEXT", payload: context });
-      socket.emit("start-listening", { sessionId: state.selectedSessionId, context });
+      socket.emit("start-listening", { sessionId: selectedSessionId, context });
     } else {
       dispatch({ type: "SET_CONTEXT", payload: context });
       socket.emit("start-listening", { context });
     }
-  };
+  }, [pendingAction, isListening, selectedSessionId, dispatch, socket, activeContext]);
 
-  const handleNewMeeting = () => {
+  const handleNewMeeting = useCallback(() => {
     if (pendingAction) return;
     dispatch({ type: "SET_PENDING" });
     const context = activeContext();
@@ -128,26 +146,10 @@ export default function Controls() {
     socket.emit("stop-listening");
     dispatch({ type: "CLEAR_TRANSCRIPT" });
     setTimeout(() => socket.emit("start-listening", { context }), 200);
-  };
+  }, [pendingAction, dispatch, socket, activeContext]);
 
   const loadingCls = pendingAction ? " btn-loading" : "";
-
-  const sCls = "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-300 dark:border-gray-600 px-2 py-1.5 rounded-lg text-xs outline-none cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-colors w-full";
   const lCls = "text-[10px] text-gray-400 dark:text-gray-600 uppercase tracking-wider font-medium whitespace-nowrap";
-  const arrowCls = "text-gray-300 dark:text-gray-600 text-xs text-center";
-
-  const LangRow = ({ sourceVal, onSource, targetVal, onTarget, disabled }) => (
-    <>
-      <select className={sCls} value={sourceVal} onChange={onSource} disabled={disabled}>
-        <option value="auto">Auto</option>
-        {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-      <span className={arrowCls}>→</span>
-      <select className={sCls} value={targetVal} onChange={onTarget} disabled={disabled}>
-        {LANGUAGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </>
-  );
 
   return (
     <>
@@ -195,10 +197,10 @@ export default function Controls() {
         disabled={pendingAction}
         onClick={handleToggle}
       >
-        {isListening ? `⏹ ${t("stop")}` : state.selectedSessionId ? `▶ ${t("resume")}` : `▶ ${t("start")}`}
+        {isListening ? `⏹ ${t("stop")}` : selectedSessionId ? `▶ ${t("resume")}` : `▶ ${t("start")}`}
       </button>
 
-      {!isListening && state.selectedSessionId && (
+      {!isListening && selectedSessionId && (
         <>
           <button
             className={`${btnBase} text-gray-700! dark:text-gray-300! bg-gray-100/80 dark:bg-white/5 border border-gray-200/60 dark:border-indigo-500/10 hover:bg-gray-200/80 dark:hover:bg-white/10`}
@@ -208,13 +210,13 @@ export default function Controls() {
           </button>
           <div className="flex items-center gap-0.5 ml-auto">
             <button className={btnAction} title={t("rename")} onClick={() => {
-              const d = state.selectedSessionData;
+              const d = selectedSessionData;
               const title = d?.title || new Date(d?.started_at + "Z").toLocaleString("en-US");
               setRenameModal({ value: title });
             }}>
               🖊️
             </button>
-            <button className={btnAction} title={t("export")} onClick={() => window.open(getExportUrl(state.selectedSessionId), "_blank")}>
+            <button className={btnAction} title={t("export")} onClick={() => window.open(getExportUrl(selectedSessionId), "_blank")}>
               📥
             </button>
             <button className={`${btnAction} hover:text-red-500! dark:hover:text-red-400!`} title={t("delete")} onClick={() => setConfirmDelete(true)}>
@@ -266,7 +268,7 @@ export default function Controls() {
         confirmLabel={t("delete")}
         confirmColor="red"
         onConfirm={async () => {
-          const id = state.selectedSessionId;
+          const id = selectedSessionId;
           setConfirmDelete(false);
           await deleteSession(id);
           dispatch({ type: "DESELECT_SESSION" });
@@ -282,16 +284,8 @@ export default function Controls() {
         onCancel={() => setRenameModal(null)}
         onConfirm={async (newTitle) => {
           setRenameModal(null);
-          await renameSession(state.selectedSessionId, newTitle);
-          // Refresh session data in state
-          dispatch({
-            type: "SELECT_SESSION",
-            payload: {
-              sessionId: state.selectedSessionId,
-              sessionData: { ...state.selectedSessionData, title: newTitle },
-              utterances: state.utterances,
-            },
-          });
+          await renameSession(selectedSessionId, newTitle);
+          dispatch({ type: "UPDATE_SESSION_DATA", payload: { title: newTitle } });
           dispatch({ type: "REFRESH_SESSION_LIST" });
         }}
       />

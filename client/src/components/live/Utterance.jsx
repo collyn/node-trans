@@ -1,7 +1,8 @@
+import { memo } from "react";
 import { getSpeakerIndex } from "../../utils/speakerColors";
 import { useI18n } from "../../i18n/I18nContext";
 
-export default function Utterance({ data, speakerColorMap, speakerName }) {
+function Utterance({ data, speakerColorMap, speakerName }) {
   const { t } = useI18n();
   const idx = getSpeakerIndex(data.speaker, speakerColorMap);
   const speaker = speakerName || (data.speaker ? `${t("speaker")} ${idx + 1}` : t("speaker"));
@@ -36,3 +37,7 @@ export default function Utterance({ data, speakerColorMap, speakerName }) {
     </div>
   );
 }
+
+export default memo(Utterance, (prev, next) =>
+  prev.data === next.data && prev.speakerName === next.speakerName
+);

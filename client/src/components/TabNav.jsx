@@ -1,9 +1,11 @@
 import { useI18n } from "../i18n/I18nContext";
-import { useSocket } from "../context/SocketContext";
+import { useSocketActions, useTranscript, useUI } from "../context/SocketContext";
 
 export default function TabNav({ onOpenSettings }) {
   const { t } = useI18n();
-  const { state, dispatch } = useSocket();
+  const { dispatch } = useSocketActions();
+  const { utterances, partialResults } = useTranscript();
+  const { overlayVisible, overlaySettings } = useUI();
 
   const btnCls = (active) =>
     `border-none px-3 py-1.5 cursor-pointer rounded-xl text-sm font-medium transition-all duration-200 active:scale-95 ${
@@ -17,13 +19,13 @@ export default function TabNav({ onOpenSettings }) {
       <div className="ml-auto flex items-center gap-1">
         {/* Overlay toggle */}
         <button
-          className={btnCls(state.overlayVisible)}
+          className={btnCls(overlayVisible)}
           onClick={() => {
             if (window.electronAPI?.toggleOverlay) {
               window.electronAPI.toggleOverlay({
-                settings: state.overlaySettings,
-                utterances: state.utterances.slice(-state.overlaySettings.maxLines),
-                partials: state.partialResults,
+                settings: overlaySettings,
+                utterances: utterances.slice(-overlaySettings.maxLines),
+                partials: partialResults,
               });
             }
             dispatch({ type: "TOGGLE_OVERLAY" });

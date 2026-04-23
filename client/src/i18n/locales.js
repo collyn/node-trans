@@ -42,6 +42,7 @@ export const en = {
   // Transcript
   pressResume: 'Press "Resume" to continue this session',
   pressStart: 'Press "Start" to listen and translate audio',
+  newMessages: "New messages",
 
   // Session info
   started: "Started",
@@ -168,7 +169,8 @@ export const en = {
   contextCustom: "Custom",
   none: "-- None --",
   autoDetect: "-- Auto-detect --",
-  systemDeviceHint: "Windows: Stereo Mix or VB-CABLE | Linux: PulseAudio monitor source",
+  nativeSystemAudio: "Using native system audio capture (no virtual device needed)",
+  systemDeviceHint: "Linux: PulseAudio monitor source",
   sourceLang: "Source Language:",
   micSourceLang: "Mic \u2192 Source Language:",
   sysSourceLang: "System Audio \u2192 Source Language:",
@@ -192,9 +194,9 @@ export const en = {
   errStartFailed: "Failed to start: {detail}",
   errSessionNotFound: "Session not found or still active",
   errSystemDeviceNotFound: "System audio device index {index} not found",
-  errNoLoopbackWin: "System audio device not found. Select a device in Settings, or install VB-CABLE.",
-  errNoLoopbackMac: "BlackHole not installed. BlackHole is required to capture system audio.",
   errNoLoopbackLinux: "System audio device not found. PulseAudio/PipeWire monitor source required for system audio capture.",
+  errAudiocapNotFound: "System audio capture tool (audiocap) not found. Run 'npm run setup:audiocap' to build it.",
+  errScreenRecordingPermission: "Screen Recording permission is required to capture system audio. Enable it in System Settings > Privacy & Security > Screen Recording, then restart the app.",
   errNoDevice: "No device configured for {source}",
   errAudioCapture: "Audio capture error ({source}): {detail}",
   errSoniox: "Soniox error: {detail}",
@@ -270,6 +272,7 @@ export const vi = {
   // Transcript
   pressResume: 'Nh\u1EA5n "Ti\u1EBFp t\u1EE5c" \u0111\u1EC3 ti\u1EBFp t\u1EE5c phi\u00EAn n\u00E0y',
   pressStart: 'Nh\u1EA5n "B\u1EAFt \u0111\u1EA7u" \u0111\u1EC3 nghe v\u00E0 d\u1ECBch \u00E2m thanh',
+  newMessages: "Tin mới",
 
   // Session info
   started: "B\u1EAFt \u0111\u1EA7u",
@@ -395,7 +398,8 @@ export const vi = {
   contextCustom: "T\u00F9y ch\u1EC9nh",
   none: "-- Kh\u00F4ng --",
   autoDetect: "-- T\u1EF1 \u0111\u1ED9ng --",
-  systemDeviceHint: "Windows: Stereo Mix hoặc VB-CABLE | Linux: PulseAudio monitor source",
+  nativeSystemAudio: "Thu \u00E2m thanh h\u1EC7 th\u1ED1ng tr\u1EF1c ti\u1EBFp (kh\u00F4ng c\u1EA7n thi\u1EBFt b\u1ECB \u1EA3o)",
+  systemDeviceHint: "Linux: PulseAudio monitor source",
   sourceLang: "Ng\u00F4n ng\u1EEF ngu\u1ED3n:",
   micSourceLang: "Mic \u2192 Ng\u00F4n ng\u1EEF ngu\u1ED3n:",
   sysSourceLang: "\u00C2m thanh h\u1EC7 th\u1ED1ng \u2192 Ng\u00F4n ng\u1EEF ngu\u1ED3n:",
@@ -419,9 +423,9 @@ export const vi = {
   errStartFailed: "Kh\u00F4ng th\u1EC3 b\u1EAFt \u0111\u1EA7u: {detail}",
   errSessionNotFound: "Kh\u00F4ng t\u00ECm th\u1EA5y phi\u00EAn ho\u1EB7c phi\u00EAn v\u1EABn \u0111ang ho\u1EA1t \u0111\u1ED9ng",
   errSystemDeviceNotFound: "Kh\u00F4ng t\u00ECm th\u1EA5y thi\u1EBFt b\u1ECB \u00E2m thanh h\u1EC7 th\u1ED1ng (index {index})",
-  errNoLoopbackWin: "Kh\u00F4ng t\u00ECm th\u1EA5y thi\u1EBFt b\u1ECB \u00E2m thanh h\u1EC7 th\u1ED1ng. Ch\u1ECDn thi\u1EBFt b\u1ECB trong C\u00E0i \u0111\u1EB7t ho\u1EB7c c\u00E0i VB-CABLE.",
-  errNoLoopbackMac: "Ch\u01B0a c\u00E0i BlackHole. C\u1EA7n BlackHole \u0111\u1EC3 thu \u00E2m thanh h\u1EC7 th\u1ED1ng.",
   errNoLoopbackLinux: "Kh\u00F4ng t\u00ECm th\u1EA5y thi\u1EBFt b\u1ECB \u00E2m thanh h\u1EC7 th\u1ED1ng. C\u1EA7n PulseAudio/PipeWire monitor source \u0111\u1EC3 thu \u00E2m thanh h\u1EC7 th\u1ED1ng.",
+  errAudiocapNotFound: "Kh\u00F4ng t\u00ECm th\u1EA5y c\u00F4ng c\u1EE5 thu \u00E2m thanh h\u1EC7 th\u1ED1ng (audiocap). Ch\u1EA1y 'npm run setup:audiocap' \u0111\u1EC3 build.",
+  errScreenRecordingPermission: "C\u1EA7n quy\u1EC1n Ghi m\u00E0n h\u00ECnh \u0111\u1EC3 thu \u00E2m thanh h\u1EC7 th\u1ED1ng. B\u1EADt trong C\u00E0i \u0111\u1EB7t H\u1EC7 th\u1ED1ng > Quy\u1EC1n ri\u00EAng t\u01B0 & B\u1EA3o m\u1EADt > Ghi m\u00E0n h\u00ECnh, sau \u0111\u00F3 kh\u1EDFi \u0111\u1ED9ng l\u1EA1i app.",
   errNoDevice: "Ch\u01B0a c\u1EA5u h\u00ECnh thi\u1EBFt b\u1ECB cho {source}",
   errAudioCapture: "L\u1ED7i thu \u00E2m ({source}): {detail}",
   errSoniox: "L\u1ED7i Soniox: {detail}",

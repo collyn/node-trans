@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, systemPreferences } from "electron";
+import { app, BrowserWindow, ipcMain, systemPreferences, dialog, shell } from "electron";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
@@ -13,6 +13,7 @@ if (process.platform === "linux") {
 }
 
 const isDev = !app.isPackaged;
+const { autoUpdater } = require("electron-updater");
 
 // Set environment variables BEFORE importing server modules
 process.env.ELECTRON = "1";
@@ -39,6 +40,27 @@ if (process.platform === "linux") {
 // Add ffmpeg directory to PATH so nodejs-whisper (which hardcodes "ffmpeg") can find it
 const ffmpegDir = path.dirname(process.env.FFMPEG_PATH);
 process.env.PATH = `${ffmpegDir}${path.delimiter}${process.env.PATH}`;
+
+// audiocap (native system audio capture) — macOS: ScreenCaptureKit, Windows: WASAPI
+if (isDev) {
+  const { existsSync } = await import("fs");
+  const isMac = process.platform === "darwin";
+  const candidates = isMac
+    ? [
+        path.join(__dirname, "../swift-audiocap/.build/apple/Products/Release/audiocap"),
+        path.join(__dirname, "../swift-audiocap/.build/release/audiocap"),
+        path.join(__dirname, "../audiocap-bin/mac/audiocap"),
+      ]
+    : [
+        path.join(__dirname, "../wasapi-audiocap/bin/Release/net8.0/win-x64/publish/audiocap.exe"),
+        path.join(__dirname, "../audiocap-bin/win/audiocap.exe"),
+      ];
+  const found = candidates.find(existsSync);
+  if (found) process.env.AUDIOCAP_PATH = found;
+} else {
+  const binName = process.platform === "win32" ? "audiocap.exe" : "audiocap";
+  process.env.AUDIOCAP_PATH = path.join(process.resourcesPath, "audiocap", binName);
+}
 
 // Data directory: use Electron's userData path
 process.env.ELECTRON_USER_DATA = app.getPath("userData");
@@ -169,6 +191,79 @@ ipcMain.on("overlay:drag-move", (_e, dx, dy) => {
   }
 });
 
+function setupAutoUpdate() {
+  if (isDev) return;
+
+  if (process.platform === "win32") {
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on("update-available", (info) => {
+      dialog.showMessageBox(mainWindow, {
+        type: "info",
+        title: "Update Available",
+        message: `Version ${info.version} is available. Download now?`,
+        buttons: ["Download", "Later"],
+        defaultId: 0,
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.downloadUpdate();
+      });
+    });
+
+    autoUpdater.on("update-downloaded", () => {
+      dialog.showMessageBox(mainWindow, {
+        type: "info",
+        title: "Update Ready",
+        message: "Update downloaded. Restart to install?",
+        buttons: ["Install & Restart", "Later"],
+        defaultId: 0,
+      }).then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall();
+      });
+    });
+
+    autoUpdater.on("error", (err) => {
+      console.error("Auto-update error:", err.message);
+    });
+
+    setTimeout(() => autoUpdater.checkForUpdates(), 3000);
+  } else {
+    setTimeout(checkForUpdatesMac, 3000);
+  }
+}
+
+function isNewerVersion(latest, current) {
+  const a = latest.split(".").map(Number);
+  const b = current.split(".").map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] || 0) - (b[i] || 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
+
+async function checkForUpdatesMac() {
+  try {
+    const res = await fetch("https://api.github.com/repos/thainph/node-trans/releases/latest");
+    if (!res.ok) return;
+    const data = await res.json();
+    const latestVersion = data.tag_name?.replace(/^v/, "");
+    const currentVersion = app.getVersion();
+    if (!latestVersion || !isNewerVersion(latestVersion, currentVersion)) return;
+
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: "info",
+      title: "Update Available",
+      message: `Version ${latestVersion} is available (current: ${currentVersion}). Open download page?`,
+      buttons: ["Open Download Page", "Later"],
+      defaultId: 0,
+    });
+    if (response === 0) shell.openExternal(data.html_url);
+  } catch {
+    // silently ignore network errors
+  }
+}
+
 app.whenReady().then(async () => {
   // Request microphone permission on macOS (triggers system dialog on first run)
   if (process.platform === "darwin") {
@@ -200,6 +295,8 @@ app.whenReady().then(async () => {
     mainWindow.loadURL(`http://localhost:${port}`);
   }
 
+  setupAutoUpdate();
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = new BrowserWindow({
@@ -212,7 +309,14 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
+  app.quit();
+});
+
+app.on("before-quit", async () => {
+  try {
+    const { stopServer } = await import("../src/server.js");
+    await stopServer();
+  } catch {
+    // Server already stopped
   }
 });

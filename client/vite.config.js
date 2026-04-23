@@ -8,9 +8,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:3000",
+      "/api": "http://localhost:3333",
       "/socket.io": {
-        target: "http://localhost:3000",
+        target: "http://localhost:3333",
         ws: true,
       },
     },
@@ -23,6 +23,16 @@ export default defineConfig({
       input: {
         main: "client/index.html",
         overlay: "client/overlay.html",
+      },
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) {
+            return "vendor-react";
+          }
+          if (id.includes("node_modules/socket.io-client")) {
+            return "vendor-socketio";
+          }
+        },
       },
     },
   },

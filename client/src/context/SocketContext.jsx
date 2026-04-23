@@ -3,7 +3,9 @@ import { io } from "socket.io-client";
 import { getSpeakerIndex } from "../utils/speakerColors";
 
 const SocketActionsContext = createContext(null);
-const SocketStateContext = createContext(null);
+const SessionContext = createContext(null);
+const TranscriptContext = createContext(null);
+const UIContext = createContext(null);
 
 const OVERLAY_DEFAULTS = {
   opacity: 0.8,
@@ -48,6 +50,7 @@ const initialState = {
   overlayVisible: false,
   overlaySettings: loadOverlaySettings(),
   activeContext: null,
+  nextUtteranceId: 1,
 };
 
 function reducer(state, action) {
@@ -142,7 +145,8 @@ function reducer(state, action) {
       delete nextPartials[d.source || "mic"];
       return {
         ...state,
-        utterances: [...state.utterances, d],
+        utterances: [...state.utterances, { ...d, _clientId: state.nextUtteranceId }],
+        nextUtteranceId: state.nextUtteranceId + 1,
         partialResults: nextPartials,
         speakerColorMap: newMap,
       };
@@ -197,21 +201,24 @@ function reducer(state, action) {
     case "SET_PENDING":
       return { ...state, pendingAction: true };
     case "CLEAR_TRANSCRIPT":
-      return { ...state, utterances: [], partialResults: {}, speakerColorMap: new Map() };
+      return { ...state, utterances: [], partialResults: {}, speakerColorMap: new Map(), nextUtteranceId: 1 };
     case "SELECT_SESSION": {
       const { sessionId, sessionData, utterances } = action.payload;
       const newMap = new Map();
-      for (const u of utterances) {
+      let nextId = state.nextUtteranceId;
+      const taggedUtterances = utterances.map((u) => {
         const speaker = u.speaker || u.original_speaker;
         if (speaker) getSpeakerIndex(speaker, newMap);
-      }
+        return { ...u, _clientId: u.id || nextId++ };
+      });
       return {
         ...state,
         selectedSessionId: sessionId,
         selectedSessionData: sessionData,
-        utterances,
+        utterances: taggedUtterances,
         partialResults: {},
         speakerColorMap: newMap,
+        nextUtteranceId: nextId,
       };
     }
     case "DESELECT_SESSION":
@@ -222,7 +229,10 @@ function reducer(state, action) {
         utterances: [],
         partialResults: {},
         speakerColorMap: new Map(),
+        nextUtteranceId: 1,
       };
+    case "UPDATE_SESSION_DATA":
+      return { ...state, selectedSessionData: { ...state.selectedSessionData, ...action.payload } };
     case "REFRESH_SESSION_LIST":
       return { ...state, sessionListVersion: state.sessionListVersion + 1 };
     case "TOGGLE_OVERLAY": {
@@ -245,12 +255,45 @@ function reducer(state, action) {
   }
 }
 
+// Module-level singleton — survives StrictMode double-mount and HMR
+const socket = io({ autoConnect: false });
+
 export function SocketProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const socket = useMemo(() => io(), []);
-  const actions = useMemo(() => ({ socket, dispatch }), [socket]);
+  const actions = useMemo(() => ({ socket, dispatch }), []);
+
+  // Memoized context slices — only re-create when their specific dependencies change
+  const session = useMemo(() => ({
+    isListening: state.isListening,
+    isPaused: state.isPaused,
+    currentSessionId: state.currentSessionId,
+    selectedSessionId: state.selectedSessionId,
+    selectedSessionData: state.selectedSessionData,
+    pendingAction: state.pendingAction,
+    activeContext: state.activeContext,
+  }), [state.isListening, state.isPaused, state.currentSessionId, state.selectedSessionId, state.selectedSessionData, state.pendingAction, state.activeContext]);
+
+  const transcript = useMemo(() => ({
+    utterances: state.utterances,
+    partialResults: state.partialResults,
+    speakerColorMap: state.speakerColorMap,
+  }), [state.utterances, state.partialResults, state.speakerColorMap]);
+
+  const ui = useMemo(() => ({
+    statusKey: state.statusKey,
+    statusParams: state.statusParams,
+    statusClass: state.statusClass,
+    toasts: state.toasts,
+    overlayVisible: state.overlayVisible,
+    overlaySettings: state.overlaySettings,
+    sessionListVersion: state.sessionListVersion,
+    listeningSince: state.listeningSince,
+    pausedElapsed: state.pausedElapsed,
+  }), [state.statusKey, state.statusParams, state.statusClass, state.toasts, state.overlayVisible, state.overlaySettings, state.sessionListVersion, state.listeningSince, state.pausedElapsed]);
 
   useEffect(() => {
+    if (!socket.connected && !socket.connecting) socket.connect();
+
     const fwdOverlay = window.electronAPI?.sendOverlayData;
 
     socket.on("status", (data) => {
@@ -293,16 +336,18 @@ export function SocketProvider({ children }) {
 
     return () => {
       socket.off();
-      // Don't disconnect — socket is shared via useMemo and must survive
-      // React StrictMode's effect cleanup/re-run cycle.
     };
-  }, [socket]);
+  }, []);
 
   return (
     <SocketActionsContext.Provider value={actions}>
-      <SocketStateContext.Provider value={state}>
-        {children}
-      </SocketStateContext.Provider>
+      <SessionContext.Provider value={session}>
+        <TranscriptContext.Provider value={transcript}>
+          <UIContext.Provider value={ui}>
+            {children}
+          </UIContext.Provider>
+        </TranscriptContext.Provider>
+      </SessionContext.Provider>
     </SocketActionsContext.Provider>
   );
 }
@@ -312,9 +357,26 @@ export function useSocketActions() {
   return useContext(SocketActionsContext);
 }
 
-/** Returns { socket, state, dispatch } — backward compatible, re-renders on state changes */
+/** Session state: isListening, isPaused, currentSessionId, selectedSessionId, selectedSessionData, pendingAction, activeContext */
+export function useSession() {
+  return useContext(SessionContext);
+}
+
+/** Transcript state: utterances, partialResults, speakerColorMap */
+export function useTranscript() {
+  return useContext(TranscriptContext);
+}
+
+/** UI state: statusKey, statusParams, statusClass, toasts, overlayVisible, overlaySettings, sessionListVersion, listeningSince, pausedElapsed */
+export function useUI() {
+  return useContext(UIContext);
+}
+
+/** Backward-compatible hook — subscribes to ALL state changes. Prefer granular hooks above. */
 export function useSocket() {
   const { socket, dispatch } = useContext(SocketActionsContext);
-  const state = useContext(SocketStateContext);
-  return { socket, state, dispatch };
+  const session = useContext(SessionContext);
+  const transcript = useContext(TranscriptContext);
+  const ui = useContext(UIContext);
+  return { socket, state: { ...session, ...transcript, ...ui }, dispatch };
 }

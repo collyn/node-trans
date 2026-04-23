@@ -17,7 +17,7 @@ const DEFAULTS = {
   micWhisperLanguage: "auto",
   systemWhisperLanguage: "auto",
   languageHints: ["en"],
-  port: 3000,
+  port: 3333,
   sonioxApiKey: null,
   enableDiarization: false,
   hfToken: null,

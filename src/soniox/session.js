@@ -112,26 +112,25 @@ export function createSession({ targetLanguage = "vi", languageHints = ["en"], a
         const tokens = result.tokens || [];
         if (tokens.length === 0) return;
 
-        // Final tokens are incremental — accumulate them
-        const finalTokens = tokens.filter((t) => t.is_final);
-        const nonFinalTokens = tokens.filter((t) => !t.is_final);
+        // Single-pass: classify tokens and build strings directly
+        let fOrig = "", fTrans = "", nfOrig = "", nfTrans = "", s = null;
+        for (const t of tokens) {
+          if (t.speaker && !s) s = t.speaker;
+          const isTrans = t.translation_status === "translation";
+          if (t.is_final) {
+            if (isTrans) fTrans += t.text; else fOrig += t.text;
+          } else {
+            if (isTrans) nfTrans += t.text; else nfOrig += t.text;
+          }
+        }
 
-        const finalOrig = finalTokens.filter((t) => t.translation_status !== "translation");
-        const finalTrans = finalTokens.filter((t) => t.translation_status === "translation");
-
-        finalOriginal += finalOrig.map((t) => t.text).join("");
-        finalTranslated += finalTrans.map((t) => t.text).join("");
-
-        // Non-final tokens may be re-sent/updated — use only the current result's
-        const nonFinalOrig = nonFinalTokens.filter((t) => t.translation_status !== "translation");
-        const nonFinalTrans = nonFinalTokens.filter((t) => t.translation_status === "translation");
-
-        const s = tokens.find((t) => t.speaker)?.speaker;
+        finalOriginal += fOrig;
+        finalTranslated += fTrans;
         if (s) speaker = s;
 
         callback({
-          originalText: finalOriginal + nonFinalOrig.map((t) => t.text).join(""),
-          translatedText: finalTranslated + nonFinalTrans.map((t) => t.text).join(""),
+          originalText: finalOriginal + nfOrig,
+          translatedText: finalTranslated + nfTrans,
           speaker,
         });
       });

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSocket } from "../context/SocketContext";
+import { useSocketActions, useSession, useUI } from "../context/SocketContext";
 import { useI18n } from "../i18n/I18nContext";
 import { fetchSessions, fetchSession, deleteSession } from "../utils/api";
 import { ConfirmDialog } from "./Modal";
@@ -69,9 +69,10 @@ function SidebarItem({ session, isActive, isSelected, disabled, selectMode, chec
 }
 
 export default function Sidebar() {
-  const { state, dispatch } = useSocket();
+  const { dispatch } = useSocketActions();
+  const { isListening, currentSessionId, selectedSessionId } = useSession();
+  const { sessionListVersion } = useUI();
   const { t } = useI18n();
-  const { isListening, currentSessionId, selectedSessionId, sessionListVersion } = state;
 
   const [sessions, setSessions] = useState([]);
   const [collapsed, setCollapsed] = useState(false);

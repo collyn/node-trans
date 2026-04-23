@@ -5,6 +5,7 @@ import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 import { loadSettings, saveSettings } from "../storage/settings.js";
 import { createLogger } from "../logger.js";
+import { ErrorCodes, apiError } from "../errors.js";
 const log = createLogger("api");
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -109,7 +110,7 @@ router.use((req, res, next) => {
 router.param("id", (req, res, next, val) => {
   const id = Number(val);
   if (!Number.isInteger(id) || id <= 0) {
-    return res.status(400).json({ error: "Invalid session ID" });
+    return apiError(res, 400, ErrorCodes.INVALID_INPUT, "Invalid session ID");
   }
   req.params.id = id;
   next();
@@ -122,7 +123,7 @@ router.get("/devices", async (req, res) => {
     const devices = await listAllDevices();
     res.json(devices);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    apiError(res, 500, ErrorCodes.INTERNAL_ERROR, "Failed to list devices");
   }
 });
 
@@ -200,12 +201,12 @@ router.delete("/local/whisper-model", async (req, res) => {
   const model = req.query.model || settings.whisperModel || "base";
   const { default: os } = await import("os");
   const modelPath = join(os.homedir(), ".cache", "whisper", `${model}.pt`);
-  if (!existsSync(modelPath)) return res.status(404).json({ error: "Model file not found" });
+  if (!existsSync(modelPath)) return apiError(res, 404, ErrorCodes.NOT_FOUND, "Model file not found");
   try {
     unlinkSync(modelPath);
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    apiError(res, 500, ErrorCodes.INTERNAL_ERROR, "Failed to delete model");
   }
 });
 
@@ -280,7 +281,7 @@ router.get("/sessions", async (req, res) => {
 router.get("/sessions/:id", async (req, res) => {
   const { getSession, getUtterances, getSpeakerAliases } = await lazyHistory();
   const session = getSession(req.params.id);
-  if (!session) return res.status(404).json({ error: "Session not found" });
+  if (!session) return apiError(res, 404, ErrorCodes.NOT_FOUND, "Session not found");
 
   const utterances = getUtterances(req.params.id);
   const speakerAliases = getSpeakerAliases(req.params.id);
@@ -291,7 +292,7 @@ router.get("/sessions/:id", async (req, res) => {
 router.patch("/sessions/:id", async (req, res) => {
   const { renameSession } = await lazyHistory();
   const { title } = req.body;
-  if (title == null) return res.status(400).json({ error: "title is required" });
+  if (title == null) return apiError(res, 400, ErrorCodes.INVALID_INPUT, "title is required");
   renameSession(req.params.id, title);
   res.json({ ok: true });
 });
@@ -306,7 +307,7 @@ router.patch("/sessions/:id/context", async (req, res) => {
 router.put("/sessions/:id/speakers/:speaker", async (req, res) => {
   const { setSpeakerAlias } = await lazyHistory();
   const { alias } = req.body;
-  if (!alias) return res.status(400).json({ error: "alias is required" });
+  if (!alias) return apiError(res, 400, ErrorCodes.INVALID_INPUT, "alias is required");
   setSpeakerAlias(req.params.id, req.params.speaker, alias);
   res.json({ ok: true });
 });
@@ -318,7 +319,7 @@ router.delete("/sessions/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     log.error("Delete session error", err);
-    res.status(500).json({ error: err.message });
+    apiError(res, 500, ErrorCodes.INTERNAL_ERROR, "Failed to delete session");
   }
 });
 
@@ -326,7 +327,7 @@ router.delete("/sessions/:id", async (req, res) => {
 router.get("/sessions/:id/export", async (req, res) => {
   const { exportSessionToMarkdown } = await lazyExport();
   const result = exportSessionToMarkdown(req.params.id);
-  if (!result) return res.status(404).json({ error: "Session not found" });
+  if (!result) return apiError(res, 404, ErrorCodes.NOT_FOUND, "Session not found");
 
   res.setHeader("Content-Type", "text/markdown; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="session-${req.params.id}.md"`);

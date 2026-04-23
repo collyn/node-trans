@@ -7,8 +7,8 @@ const IS_WIN = process.platform === "win32";
 const IS_LINUX = process.platform === "linux";
 const FFMPEG_BIN = () => process.env.FFMPEG_PATH || "ffmpeg";
 
-// Cache with 30-second TTL
-const CACHE_TTL = 30_000;
+// Cache with 120-second TTL
+const CACHE_TTL = 120_000;
 const cache = { input: null, output: null, inputAt: 0, outputAt: 0 };
 
 // Input devices — used for mic & system audio capture
@@ -31,23 +31,43 @@ export async function listOutputDevices() {
   return result;
 }
 
-// Check if ffmpeg is available
+// Check if ffmpeg is available (cached — result never changes during a session)
+let _ffmpegP = null;
 export function checkFfmpeg() {
-  return new Promise((resolve) => {
-    const proc = spawn(FFMPEG_BIN(), ["-version"], { stdio: ["pipe", "pipe", "pipe"] });
+  if (!_ffmpegP) {
+    _ffmpegP = new Promise((resolve) => {
+      const proc = spawn(FFMPEG_BIN(), ["-version"], { stdio: ["pipe", "pipe", "pipe"] });
+      proc.on("error", () => resolve(false));
+      proc.on("close", (code) => resolve(code === 0));
+    });
+  }
+  return _ffmpegP;
+}
+
+// Check if audiocap (native system audio capture) is available (cached)
+let _audiocapP = null;
+const AUDIOCAP_BIN = () => process.env.AUDIOCAP_PATH || (IS_WIN ? "audiocap.exe" : "audiocap");
+export function checkAudiocap() {
+  if (_audiocapP) return _audiocapP;
+  _audiocapP = new Promise((resolve) => {
+    const proc = spawn(AUDIOCAP_BIN(), ["--version"], { stdio: ["pipe", "pipe", "pipe"] });
     proc.on("error", () => resolve(false));
     proc.on("close", (code) => resolve(code === 0));
   });
+  return _audiocapP;
 }
 
-// Combined: returns { input: [...], output: [...], ffmpegAvailable: bool }
+// Combined: returns { input, output, ffmpegAvailable, audiocapAvailable }
+// Runs all checks in parallel for faster startup
 export async function listAllDevices() {
-  const ffmpegAvailable = await checkFfmpeg();
-  if (!ffmpegAvailable) {
-    return { input: [], output: [], ffmpegAvailable: false };
-  }
-  const [input, output] = await Promise.all([listInputDevices(), listOutputDevices()]);
-  return { input, output, ffmpegAvailable: true };
+  const [ffmpegAvailable, audiocapAvailable, input, output] = await Promise.all([
+    checkFfmpeg(),
+    checkAudiocap(),
+    listInputDevices().catch(() => []),
+    listOutputDevices().catch(() => []),
+  ]);
+  if (!ffmpegAvailable) return { input: [], output: [], ffmpegAvailable: false, audiocapAvailable };
+  return { input, output, ffmpegAvailable: true, audiocapAvailable };
 }
 
 // ─── macOS ───────────────────────────────────────────────

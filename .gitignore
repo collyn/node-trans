@@ -8,9 +8,15 @@ spec/
 # Electron
 release/
 ffmpeg-bin/
+swift-audiocap/.build/
+wasapi-audiocap/bin/
+wasapi-audiocap/obj/
 *.dmg
 *.exe
 *.msi
+
+# Allow pre-built audiocap binaries
+!audiocap-bin/**
 
 .DS_Store
 .gitnexus

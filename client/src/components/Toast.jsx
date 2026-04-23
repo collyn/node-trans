@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useSocket, useSocketActions } from "../context/SocketContext";
+import { useSocketActions, useUI } from "../context/SocketContext";
 import { useI18n } from "../i18n/I18nContext";
 
 const variants = {
@@ -53,12 +53,12 @@ function ToastItem({ toast }) {
 }
 
 export default function ToastContainer() {
-  const { state } = useSocket();
-  if (!state.toasts?.length) return null;
+  const { toasts } = useUI();
+  if (!toasts?.length) return null;
 
   return (
     <div className="fixed bottom-5 right-5 z-[70] flex flex-col gap-2 items-end pointer-events-none">
-      {state.toasts.map((toast) => (
+      {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} />
       ))}
     </div>

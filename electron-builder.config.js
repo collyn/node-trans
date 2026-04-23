@@ -33,10 +33,20 @@ export default {
       to: "ffmpeg",
       filter: ["**/*"],
     },
+    {
+      from: "audiocap-bin/${os}",
+      to: "audiocap",
+      filter: ["**/*"],
+    },
   ],
   icon: "build/icon",
+  publish: {
+    provider: "github",
+    owner: "thainph",
+    repo: "node-trans",
+  },
   mac: {
-    target: ["dir", "zip"],
+    target: ["dmg", "zip"],
     category: "public.app-category.productivity",
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
@@ -44,6 +54,8 @@ export default {
     extendInfo: {
       NSMicrophoneUsageDescription:
         "Node Trans needs microphone access to capture and translate audio.",
+      NSScreenCaptureUsageDescription:
+        "Node Trans needs screen recording permission to capture system audio for translation.",
     },
   },
   win: {
