@@ -5,6 +5,7 @@ export default {
   appId: "com.nodetrans.app",
   productName: "Node Trans",
   npmRebuild: false,
+  afterPack: "./scripts/afterPack.js",
   directories: {
     output: "release",
     buildResources: "build",
@@ -27,18 +28,7 @@ export default {
     "!node_modules/**/{.github,.vscode}/**",
   ],
   asarUnpack: ["**/better-sqlite3/**", "**/nodejs-whisper/**", "src/local/*.py"],
-  extraResources: [
-    {
-      from: "ffmpeg-bin/${os}",
-      to: "ffmpeg",
-      filter: ["**/*"],
-    },
-    {
-      from: "audiocap-bin/${os}",
-      to: "audiocap",
-      filter: ["**/*"],
-    },
-  ],
+
   icon: "build/icon",
   publish: {
     provider: "github",
@@ -51,6 +41,10 @@ export default {
     hardenedRuntime: true,
     entitlements: "build/entitlements.mac.plist",
     entitlementsInherit: "build/entitlements.mac.plist",
+    extraResources: [
+      { from: "ffmpeg-bin/mac", to: "ffmpeg", filter: ["**/*"] },
+      { from: "audiocap-bin/mac", to: "audiocap", filter: ["**/*"] },
+    ],
     extendInfo: {
       NSMicrophoneUsageDescription:
         "Node Trans needs microphone access to capture and translate audio.",
@@ -62,6 +56,10 @@ export default {
     target: [
       { target: "nsis", arch: ["x64"] },
       { target: "portable", arch: ["x64"] },
+    ],
+    extraResources: [
+      { from: "ffmpeg-bin/win", to: "ffmpeg", filter: ["**/*"] },
+      { from: "audiocap-bin/win", to: "audiocap", filter: ["**/*"] },
     ],
   },
   nsis: {

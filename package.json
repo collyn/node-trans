@@ -27,7 +27,10 @@
     "node": ">=20"
   },
   "keywords": [],
-  "author": "",
+  "author": {
+    "name": "Node Trans",
+    "email": "thai.nph@papay.vn"
+  },
   "license": "ISC",
   "dependencies": {
     "@soniox/node": "^1.1.2",
