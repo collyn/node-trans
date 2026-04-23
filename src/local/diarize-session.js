@@ -12,7 +12,7 @@ import { spawn } from "child_process";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { existsSync } from "fs";
-import { translateText } from "./translate.js";
+import { translateText, warmUpOllama } from "./translate.js";
 import { createSession as createWhisperSession } from "./whisper-session.js";
 import { createLogger } from "../logger.js";
 import { getVenvPython } from "./python-utils.js";
@@ -239,6 +239,11 @@ export function createSession({
         };
         if (ready || useFallback) readyResolve();
       });
+
+      // Pre-load the Ollama model while waiting for first audio
+      if (localTranslationEngine === "ollama") {
+        warmUpOllama(ollamaBaseUrl, ollamaModel);
+      }
     },
 
     async startStreaming() {

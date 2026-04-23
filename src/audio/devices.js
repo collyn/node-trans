@@ -4,6 +4,7 @@ import { createLogger } from "../logger.js";
 const log = createLogger("devices");
 
 const IS_WIN = process.platform === "win32";
+const IS_LINUX = process.platform === "linux";
 const FFMPEG_BIN = () => process.env.FFMPEG_PATH || "ffmpeg";
 
 // Cache with 30-second TTL
@@ -14,7 +15,7 @@ const cache = { input: null, output: null, inputAt: 0, outputAt: 0 };
 export async function listInputDevices() {
   const now = Date.now();
   if (cache.input && now - cache.inputAt < CACHE_TTL) return cache.input;
-  const result = await (IS_WIN ? listInputDevicesWindows() : listInputDevicesMac());
+  const result = await (IS_WIN ? listInputDevicesWindows() : IS_LINUX ? listInputDevicesLinux() : listInputDevicesMac());
   cache.input = result;
   cache.inputAt = now;
   return result;
@@ -24,7 +25,7 @@ export async function listInputDevices() {
 export async function listOutputDevices() {
   const now = Date.now();
   if (cache.output && now - cache.outputAt < CACHE_TTL) return cache.output;
-  const result = await (IS_WIN ? listOutputDevicesWindows() : listOutputDevicesMac());
+  const result = await (IS_WIN ? listOutputDevicesWindows() : IS_LINUX ? listOutputDevicesLinux() : listOutputDevicesMac());
   cache.output = result;
   cache.outputAt = now;
   return result;
@@ -217,4 +218,43 @@ function parseDshow(stderr) {
   }
 
   return devices;
+}
+
+// ─── Linux ───────────────────────────────────────────────
+
+function listInputDevicesLinux() {
+  return new Promise((resolve) => {
+    execFile("pactl", ["list", "sources", "short"], (err, stdout) => {
+      if (err) return resolve([]);
+      const devices = [];
+      let index = 0;
+      for (const line of stdout.split("\n")) {
+        const parts = line.trim().split("\t");
+        if (parts.length >= 2) {
+          devices.push({ index: index++, name: parts[1] });
+        }
+      }
+      resolve(devices);
+    });
+  });
+}
+
+function listOutputDevicesLinux() {
+  return new Promise((resolve) => {
+    execFile("pactl", ["list", "sinks", "short"], (err, stdout) => {
+      if (err) return resolve([]);
+      const devices = [];
+      for (const line of stdout.split("\n")) {
+        const parts = line.trim().split("\t");
+        if (parts.length >= 2) {
+          devices.push({
+            name: parts[1],
+            transport: "",
+            isDefault: false,
+          });
+        }
+      }
+      resolve(devices);
+    });
+  });
 }

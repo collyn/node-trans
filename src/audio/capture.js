@@ -6,6 +6,7 @@ const log = createLogger("capture");
 
 const CHUNK_SIZE = 3840; // 120ms at 16kHz mono 16-bit
 const IS_WIN = process.platform === "win32";
+const IS_LINUX = process.platform === "linux";
 
 class ChunkTransform extends Transform {
   constructor() {
@@ -36,6 +37,8 @@ class ChunkTransform extends Transform {
 export function startCapture(device) {
   const args = IS_WIN
     ? ["-f", "dshow", "-i", `audio=${device}`]
+    : IS_LINUX
+    ? ["-f", "pulse", "-i", device]
     : ["-f", "avfoundation", "-i", `:${device}`];
 
   args.push(

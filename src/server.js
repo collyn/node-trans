@@ -152,11 +152,12 @@ io.on("connection", (socket) => {
       // Resolve devices
       const devices = await listInputDevices();
       const isWin = process.platform === "win32";
+      const isLinux = process.platform === "linux";
       const micIndex = settings.micDeviceIndex ?? 0;
       const micDevice = devices.find((d) => d.index === micIndex);
 
-      // On Windows, dshow needs device name; on macOS, avfoundation uses index
-      const micCaptureDev = isWin ? micDevice?.name : micIndex;
+      // On Windows/Linux, capture needs device name; on macOS, avfoundation uses index
+      const micCaptureDev = (isWin || isLinux) ? micDevice?.name : micIndex;
 
       // System device: use manual setting or auto-detect virtual loopback input device
       let systemCaptureDev = null;
@@ -166,20 +167,23 @@ io.on("connection", (socket) => {
           // Manual selection from settings
           const systemDevice = devices.find((d) => d.index === systemIndex);
           if (systemDevice) {
-            systemCaptureDev = isWin ? systemDevice.name : systemDevice.index;
+            systemCaptureDev = (isWin || isLinux) ? systemDevice.name : systemDevice.index;
           } else {
             emitError(socket, { key: "errSystemDeviceNotFound", params: { index: systemIndex } });
           }
         } else {
-          // Auto-detect: macOS: BlackHole, Windows: VB-CABLE / Stereo Mix / CABLE Output
-          const loopbackPattern = isWin
+          // Auto-detect: macOS: BlackHole, Windows: VB-CABLE / Stereo Mix, Linux: PulseAudio monitor
+          const loopbackPattern = isLinux
+            ? /\.monitor$/i
+            : isWin
             ? /cable|stereo mix|virtual|vb-audio/i
             : /blackhole/i;
           const loopback = devices.find((d) => loopbackPattern.test(d.name));
           if (loopback) {
-            systemCaptureDev = isWin ? loopback.name : loopback.index;
+            systemCaptureDev = (isWin || isLinux) ? loopback.name : loopback.index;
           } else {
-            emitError(socket, { key: isWin ? "errNoLoopbackWin" : "errNoLoopbackMac" });
+            const errKey = isLinux ? "errNoLoopbackLinux" : isWin ? "errNoLoopbackWin" : "errNoLoopbackMac";
+            emitError(socket, { key: errKey });
           }
         }
       }

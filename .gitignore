@@ -13,3 +13,4 @@ ffmpeg-bin/
 *.msi
 
 .DS_Store
+.gitnexus

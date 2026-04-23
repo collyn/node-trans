@@ -84,15 +84,25 @@ function findSystemPython() {
 }
 
 function pythonCandidates() {
-  return isWin
-    ? ["python", "py", "python3.12", "python3.11", "python3"]
-    : [
-        "/opt/homebrew/opt/python@3.12/bin/python3.12",
-        "/opt/homebrew/opt/python@3.11/bin/python3.11",
-        "python3.12",
-        "python3.11",
-        "python3",
-      ];
+  if (isWin) {
+    return ["python", "py", "python3.12", "python3.11", "python3"];
+  }
+  // Linux: standard system paths
+  if (process.platform === "linux") {
+    return [
+      "python3.12",
+      "python3.11",
+      "python3",
+    ];
+  }
+  // macOS: Homebrew paths
+  return [
+    "/opt/homebrew/opt/python@3.12/bin/python3.12",
+    "/opt/homebrew/opt/python@3.11/bin/python3.11",
+    "python3.12",
+    "python3.11",
+    "python3",
+  ];
 }
 
 /** Check if a compatible Python (3.10+) is available on the system. (async — non-blocking) */

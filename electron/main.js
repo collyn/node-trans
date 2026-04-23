@@ -5,13 +5,24 @@ import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Linux: disable SUID sandbox (requires root-owned chrome-sandbox otherwise)
+// In production builds, electron-builder sets correct permissions automatically
+if (process.platform === "linux") {
+  app.commandLine.appendSwitch("no-sandbox");
+}
+
 const isDev = !app.isPackaged;
 
 // Set environment variables BEFORE importing server modules
 process.env.ELECTRON = "1";
 
-// FFmpeg path: use ffmpeg-static in dev, bundled binary in production
-if (isDev) {
+// FFmpeg path:
+// - Linux: always use system ffmpeg (ffmpeg-static lacks libpulse support)
+// - Windows/Mac: use ffmpeg-static in dev, bundled binary in production
+if (process.platform === "linux") {
+  process.env.FFMPEG_PATH = "ffmpeg";
+} else if (isDev) {
   try {
     process.env.FFMPEG_PATH = require("ffmpeg-static");
   } catch {

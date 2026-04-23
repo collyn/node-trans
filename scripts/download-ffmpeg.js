@@ -5,6 +5,7 @@
  *   node scripts/download-ffmpeg.js          # current platform
  *   node scripts/download-ffmpeg.js --win    # Windows x64 (cross-platform)
  *   node scripts/download-ffmpeg.js --mac    # macOS (from ffmpeg-static)
+ *   node scripts/download-ffmpeg.js --linux  # Linux (from ffmpeg-static)
  */
 
 import fs from "fs";
@@ -21,18 +22,19 @@ const ROOT = path.join(__dirname, "..");
 const args = process.argv.slice(2);
 const forceWin = args.includes("--win");
 const forceMac = args.includes("--mac");
+const forceLinux = args.includes("--linux");
 
-const targetPlatform = forceWin ? "win" : forceMac ? "mac" : (process.platform === "win32" ? "win" : "mac");
+const targetPlatform = forceWin ? "win" : forceMac ? "mac" : forceLinux ? "linux" : (process.platform === "win32" ? "win" : process.platform === "linux" ? "linux" : "mac");
 
-if (targetPlatform === "mac") {
-  // macOS: copy from ffmpeg-static (only works on macOS host)
+if (targetPlatform === "mac" || targetPlatform === "linux") {
+  // macOS / Linux: copy from ffmpeg-static (requires host platform match or cross-platform ffmpeg-static)
   const ffmpegStaticPath = require("ffmpeg-static");
   if (!ffmpegStaticPath || !fs.existsSync(ffmpegStaticPath)) {
     console.error("ffmpeg-static binary not found. Run: npm install ffmpeg-static");
     process.exit(1);
   }
 
-  const destDir = path.join(ROOT, "ffmpeg-bin", "mac");
+  const destDir = path.join(ROOT, "ffmpeg-bin", targetPlatform);
   const destPath = path.join(destDir, "ffmpeg");
 
   if (fs.existsSync(destPath)) {

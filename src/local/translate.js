@@ -35,7 +35,7 @@ export async function translateText(text, sourceLang, settings) {
           prompt: `${context ? `[Context: ${context.slice(0, 200).replace(/\n/g, " ")}]\n\n` : ""}Translate the following text to ${targetLangName}. Reply with only the translation, no explanation:\n\n${text}`,
           stream: false,
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(60_000),
       });
       if (!res.ok) throw new Error(`Ollama HTTP ${res.status}`);
       const data = await res.json();
@@ -59,8 +59,31 @@ export async function translateText(text, sourceLang, settings) {
     }
   } catch (err) {
     // Translation failure is non-fatal — log and return empty
-    log.warn(`${localTranslationEngine} error`, err);
+    log.warn(`${localTranslationEngine} error: ${err.message}`);
   }
 
   return { translated: "", lang: null };
+}
+
+/**
+ * Pre-load the Ollama model so the first translation doesn't time out.
+ * Fire-and-forget — errors are swallowed.
+ */
+export async function warmUpOllama(baseUrl, model) {
+  try {
+    log.info(`Warming up Ollama model '${model}'...`);
+    const res = await fetch(`${baseUrl}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, prompt: "hi", stream: false }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (res.ok) {
+      log.info(`Ollama model '${model}' warmed up successfully`);
+    } else {
+      log.warn(`Ollama warm-up returned HTTP ${res.status}`);
+    }
+  } catch (err) {
+    log.warn(`Ollama warm-up failed: ${err.message}`);
+  }
 }

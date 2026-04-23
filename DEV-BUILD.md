@@ -34,6 +34,7 @@ npm run electron:dev   # Dev mode (Vite + Electron with hot-reload)
 ```bash
 npm run electron:build:mac   # Build for macOS
 npm run electron:build:win   # Build for Windows
+npm run electron:build:linux # Build for Linux
 npm run electron:build       # Build for current platform
 ```
 
@@ -46,6 +47,8 @@ npm run electron:build       # Build for current platform
 - `release/Node Trans-x.x.x-arm64-mac.zip` — macOS
 - `release/Node Trans Setup x.x.x.exe` — Windows installer
 - `release/Node Trans x.x.x.exe` — Windows portable
+- `release/Node Trans-x.x.x.AppImage` — Linux AppImage
+- `release/node-trans_x.x.x_amd64.deb` — Linux Debian package
 
 ---
 

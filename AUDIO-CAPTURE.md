@@ -115,3 +115,55 @@ Some Windows machines have **Stereo Mix** built in (Realtek audio):
 | No audio after selecting CABLE | Enable "Listen to this device" (Step 4) |
 | App doesn't see CABLE Output | Restart the app |
 | Audio latency | Open VB-CABLE Control Panel → increase buffer size |
+
+---
+
+## Linux — PulseAudio / PipeWire
+
+On Linux, system audio capture uses **PulseAudio monitor sources** — virtual input devices that mirror what's playing on an output. Most modern Linux desktops (Ubuntu 22.04+, Fedora 34+, etc.) use either PulseAudio or PipeWire (with PulseAudio compatibility).
+
+### Step 1 — Install prerequisites
+
+```bash
+# Ubuntu / Debian
+sudo apt install ffmpeg pulseaudio-utils
+
+# Fedora
+sudo dnf install ffmpeg pulseaudio-utils
+
+# Arch
+sudo pacman -S ffmpeg libpulse
+```
+
+### Step 2 — Find your monitor source
+
+```bash
+pactl list sources short
+```
+
+Look for sources ending in `.monitor`, e.g.:
+
+```
+0  alsa_output.pci-0000_00_1f.3.analog-stereo.monitor  PipeWireStream  s32le 2ch 48000Hz  IDLE
+1  alsa_input.pci-0000_00_1f.3.analog-stereo            PipeWireStream  s32le 2ch 48000Hz  SUSPENDED
+```
+
+The `.monitor` source (`alsa_output...monitor`) captures everything played through that output device.
+
+### Step 3 — Configure in Node Trans
+
+**Settings → Audio**:
+- **Audio Source** → `System Audio` or `Both`
+- **System Audio Device** → select the `.monitor` device from the dropdown
+
+> Node Trans auto-detects monitor sources. If your monitor device is listed, it will be selected automatically.
+
+### Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| No monitor source listed | Check PulseAudio/PipeWire is running: `pactl info` |
+| `pactl` command not found | Install: `sudo apt install pulseaudio-utils` |
+| Monitor source is SUSPENDED | Play some audio first, then refresh device list |
+| No audio captured | Ensure the correct output device is active; check with `pavucontrol` |
+| Using PipeWire | PipeWire provides PulseAudio compatibility out of the box — no extra setup needed |

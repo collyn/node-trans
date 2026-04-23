@@ -56,5 +56,12 @@ export default {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
   },
+  linux: {
+    target: [
+      { target: "AppImage", arch: ["x64"] },
+      { target: "deb", arch: ["x64"] },
+    ],
+    category: "Audio;AudioVideo",
+  },
 };
 
